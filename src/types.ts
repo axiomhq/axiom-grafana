@@ -1,0 +1,25 @@
+import { DataQuery, DataSourceJsonData } from '@grafana/data';
+
+export interface AxiomQuery extends DataQuery {
+  apl: string;
+  startTime?: string;
+  endTime?: string;
+}
+
+export const DEFAULT_QUERY: Partial<AxiomQuery> = {
+  apl: '',
+};
+
+/**
+ * These are options configured for each DataSource instance
+ */
+export interface AxiomDataSourceOptions extends DataSourceJsonData {
+  apiHost: string;
+}
+
+/**
+ * Value that is used in the backend, but never sent over HTTP to the frontend
+ */
+export interface MySecureJsonData {
+  accessToken: string;
+}
