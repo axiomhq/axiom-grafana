@@ -23,3 +23,24 @@ export interface AxiomDataSourceOptions extends DataSourceJsonData {
 export interface MySecureJsonData {
   accessToken: string;
 }
+
+export interface APLResponse {
+  format: string;
+  tables: APLTable[];
+  datasetNames: string[];
+
+}
+
+export interface APLTable {
+  name: string;
+  buckets: any;
+  fields: APLTableField[];
+  columns: any[];
+  groups: Array<{name: string}>
+}
+
+export interface APLTableField {
+  name: string;
+  type: string;
+  agg: {name: string};
+}

@@ -7,8 +7,9 @@ import {
   FieldType,
 } from '@grafana/data';
 import { getBackendSrv } from '@grafana/runtime';
+import { lastValueFrom } from 'rxjs';
 
-import { AxiomQuery, AxiomDataSourceOptions } from './types';
+import { AxiomQuery, AxiomDataSourceOptions, APLResponse } from './types';
 
 export class DataSource extends DataSourceApi<AxiomQuery, AxiomDataSourceOptions> {
   url?: string;
@@ -19,49 +20,30 @@ export class DataSource extends DataSourceApi<AxiomQuery, AxiomDataSourceOptions
   }
 
   async query(options: DataQueryRequest<AxiomQuery>): Promise<DataQueryResponse> {
+    console.log(options);
     // data frames: https://grafana.com/docs/grafana/latest/developers/plugins/data-frames/
     const { range } = options;
     const from = range!.raw.from.toString();
     const to = range!.raw.to.valueOf().toString();
 
-    const promises = await options.targets.map(async (target) => {
+    const promises = options.targets.map(async (target) => {
       const resp = await this.doRequest({ ...target, startTime: from, endTime: to });
+      console.log(resp);
 
       let frame: MutableDataFrame;
-      //  = new MutableDataFrame({
-      //   refId: target.refId,
-      //   fields: [
-      //     { name: 'time', type: FieldType.time },
-      //     { name: 'value', type: FieldType.number },
-      //     // { name: 'id', type: FieldType.string },
-      //   ],
-      // });
 
-
-      await resp?.forEach((point: any) => {
-        const table = point.data.tables[1];
-        const fields = table.fields.map((f: any, index: number) => {
-          return { name: f.name, type: resolveFieldType(f.type), values: table.columns[index] }
-        })
-        frame = new MutableDataFrame({
-          name: table.name,
-          refId: target.refId,
-          fields,
-        })
+      const table = resp?.data?.tables[0]!;
+      const fields = table.fields.map((f: any, index: number) => {
+        return { name: f.name, type: resolveFieldType(f.type), values: table.columns[index] };
       });
-      // legacy format series
-      // resp?.forEach((point: any) => {
-      //   point.data.buckets.series.forEach((series: any) => {
-      //     const time = new Date(series.startTime);
-      //     series.groups?.forEach((g: any) => {
-      //       frame.add({time: time.getTime(), value: g.aggregations[0].value});
-      //     });
-      //   });
-      // });
+      frame = new MutableDataFrame({
+        name: table.name,
+        refId: target.refId,
+        fields,
+      });
 
       return frame;
     });
-
 
     return Promise.all(promises).then((data) => ({ data }));
   }
@@ -70,7 +52,7 @@ export class DataSource extends DataSourceApi<AxiomQuery, AxiomDataSourceOptions
     if (!query.apl) {
       return;
     }
-    const resp = await getBackendSrv().fetch({
+    const resp = getBackendSrv().fetch<APLResponse>({
       method: 'POST',
       url: `${this.url}/datasets/_apl`,
       data: query,
@@ -79,7 +61,7 @@ export class DataSource extends DataSourceApi<AxiomQuery, AxiomDataSourceOptions
       },
     });
 
-    return resp;
+    return lastValueFrom(resp);
   }
 
   async testDatasource() {
@@ -88,7 +70,7 @@ export class DataSource extends DataSourceApi<AxiomQuery, AxiomDataSourceOptions
       { apl: "['vercel'] | limit 1", startTime: 'now-7d', endTime: 'now' },
       {
         params: {
-          format: 'legacy',
+          format: 'tabular',
         },
       }
     );
@@ -98,10 +80,10 @@ export class DataSource extends DataSourceApi<AxiomQuery, AxiomDataSourceOptions
 const resolveFieldType = (axiomFieldType: string) => {
   switch (axiomFieldType) {
     case 'datetime':
-      return FieldType.time
+      return FieldType.time;
     case 'integer':
-      return FieldType.number
+      return FieldType.number;
     default:
-      return FieldType.string
+      return FieldType.string;
   }
-}
+};

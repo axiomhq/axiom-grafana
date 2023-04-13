@@ -45,7 +45,6 @@ export function ConfigEditor(props: Props) {
 
   return (
     <div className="gf-form-group">
-      {/* xaat-a2c46473-cb0c-40ac-82ce-98c682d3c584 */}
       <InlineField label="Host" labelWidth={12}>
         <Input
           onChange={onHostChange}
