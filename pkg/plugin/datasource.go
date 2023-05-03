@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-
+	"strconv"
 	"time"
 
 	"github.com/axiomhq/axiom-go/axiom"
@@ -58,11 +58,6 @@ func NewDatasource(settings backend.DataSourceInstanceSettings) (instancemgmt.In
 		return nil, err
 	}
 
-	// Important to reuse the same client for each query, to avoid using all available connections on a host
-	// cl, err := httpclient.New(opts)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("httpclient new: %w", err)
-	// }
 	return &Datasource{
 		client:  client,
 		apiHost: host,
@@ -127,130 +122,112 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("axiom error: %v", err.Error()))
 	}
 
-	// var labels data.Labels
-	// var values []int64
-	// var fields map[string][]int64
+	frame := data.NewFrame("response")
 
-	// for _, s := range result.Buckets.Series {
-	// 	for _, g := range s.Groups {
-	// 		for k, v := range g.Group {
-	// 			log.DefaultLogger.Info(fmt.Sprintf("label: %s, value: %v", k, v))
-	// 			labels[k] = k
-	// 			values = append(values, v.(int64))
+	// defer func() {
+	// 	if r := recover(); r != nil {
+	// 		var ok bool
+	// 		err, ok = r.(error)
+	// 		if !ok {
+	// 			err = fmt.Errorf("pkg: %v", r)
+	// 			log.DefaultLogger.Error(err.Error())
 	// 		}
+	// 		log.DefaultLogger.Error(err.Error())
 	// 	}
-	// }
+	// }()
 
-	// for _, s := range result.Matches {
-	// 	log.DefaultLogger.Info(fmt.Sprintf("data: %v", s.Data))
-	// }
+	table := result.Tables[0]
+	for index, f := range table.Fields {
+		fieldType := f.Type.String()
 
-	// for _, t := range result.Buckets.Totals {
-	// 	// for label, name := range t.Group {
-	// 	// labels[label] = name.(string)
-	// 	// }
-	// 	for _, agg := range t.Aggregations {
-	// 		// fields[agg.Alias] = append(fields[agg.Alias], agg.Value.(int64))
-	// 		log.DefaultLogger.Info(fmt.Sprintf("agg: %v", agg.Value))
-	// 		values = append(values, agg.Value.(int64))
-	// 	}
-	// }
+		var field *data.Field
+		switch fieldType {
+		case "datetime":
+			field = data.NewField(f.Name, nil, []time.Time{})
+		case "integer", "int":
+			field = data.NewField(f.Name, nil, []int64{})
+		default:
+			field = data.NewField(f.Name, nil, []string{})
+		}
 
-	for _, series := range result.Buckets.Series {
-		// create data frame response.
-		// For an overview on data frames and how grafana handles them:
-		// https://grafana.com/docs/grafana/latest/developers/plugins/data-frames/
-		frame := data.NewFrame("response", data.NewField("time", nil, []time.Time{series.StartTime, series.EndTime}))
+		log.DefaultLogger.Info(field.Name, "<<<-field name")
 
-		for _, group := range series.Groups {
-			for _, agg := range group.Aggregations {
-				log.DefaultLogger.Info("value", agg.Value.(int64))
-				frame.Fields = append(frame.Fields,
-					data.NewField(agg.Alias, nil, []int64{agg.Value.(int64)}),
-				)
+		for _, v := range table.Columns[index] {
+			if v == nil {
+				field.Append(nil)
+			}
+
+			switch fieldType {
+			case "datetime":
+				t, err := time.Parse(time.RFC3339, v.(string))
+				if err == nil {
+					field.Append(t)
+				}
+			case "integer", "int":
+				log.DefaultLogger.Info("value is int64")
+				i, err := strconv.Atoi(v.(string))
+				if err == nil {
+					field.Append(i)
+				}
+			default:
+				log.DefaultLogger.Info(fmt.Sprintf("%v", v))
+				log.DefaultLogger.Info("value is string, or smth else", fieldType, v)
+				// field.Append(v.(string))
 			}
 		}
 
-		// add fields.
-		// frame.Fields = append(frame.Fields,
-		// 	data.NewField("time", nil, []time.Time{series.StartTime, series.EndTime}),
-		// 	data.NewField("values", nil, []int64{10, 20}),
-		// )
+		// for _, v := range table.Columns[index] {
+		// 	switch t := v.(type) {
+		// 	case time.Time:
+		// 		log.DefaultLogger.Error("type", t)
+		// 		log.DefaultLogger.Info("value is time.Time")
+		// 		log.DefaultLogger.Error(">>>its a known element type")
+		// 		field.Append(t)
+		// 	case string:
+		// 		log.DefaultLogger.Info("value is string")
+		// 		field.Append(t)
+		// 	case int64:
+		// 		log.DefaultLogger.Info("value is int64")
+		// 		field.Append(int64(t))
+		// 	default:
+		// 		log.DefaultLogger.Error(">>>weird value of column element")
+		// 		log.DefaultLogger.Info(fmt.Sprintf("%v", t))
+		// 	}
+		// }
 
-		// add the frames to the response.
-		response.Frames = append(response.Frames, frame)
+		frame.Fields = append(frame.Fields, field)
+
 	}
+
+	response.Frames = append(response.Frames, frame)
 
 	return response
 }
 
-// func (d *Datasource) query(ctx context.Context, host string, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
-// 	var response backend.DataResponse
+// func getTypeArray(s string) interface{} {
+// 	switch s {
+// 	case "datetime":
+// 		return []time.Time{}
+// 	case "integer", "int":
+// 		return []int64{}
+// 	default:
+// 		return []string{}
+// 	}
+// }
 
-// 	// Unmarshal the JSON into our queryModel.
-// 	var qm queryModel
-
-// 	log.DefaultLogger.Info(string(query.JSON))
-
-// 	err := json.Unmarshal(query.JSON, &qm)
-// 	if err != nil {
-// 		log.DefaultLogger.Info("failed to unmarshal query json")
-// 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
+// func resolveValues(s string, columns []any, arr any) {
+// 	switch s {
+// 	case "datetime":
+// 		arr = arr.([]time.Time)
+// 		break
+// 	case "integer", "int":
+// 		arr = arr.([]int64)
+// 		break
+// 	default:
+// 		arr = arr.([]string)
+// 		break
 // 	}
 
-// 	// body, err := json.Marshal(query)
-// 	// if err != nil {
-
-// 	// 	return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to decode query: %v", err.Error()))
-// 	// }
-
-// 	// make request to axiom
-// 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, host+"/datasets/_apl", bytes.NewReader(query.JSON))
-// 	if err != nil {
-// 		panic(err)
-// 		// return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("%v", err.Error()))
-// 	}
-
-// 	axiomResp, err := d.httpClient.Do(req)
-// 	if err != nil {
-// 		log.DefaultLogger.Error(err.Error())
-// 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("%v", err.Error()))
-// 	}
-
-// 	log.DefaultLogger.Info(">>>", query.JSON)
-
-// 	if axiomResp.StatusCode >= 400 {
-// 		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("http %d error: %v", axiomResp.StatusCode, err.Error()))
-// 	}
-
-// 	b, err := io.ReadAll(axiomResp.Body)
-// 	log.DefaultLogger.Info(">>> %v\n%v\n", err, string(b))
-
-// 	var result map[string]any
-// 	err = json.NewDecoder(axiomResp.Body).Decode(&result)
-// 	if err != nil {
-// 		log.DefaultLogger.Error(err.Error())
-// 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("%v", err.Error()))
-// 	}
-// 	defer axiomResp.Body.Close()
-
-// 	log.DefaultLogger.Info(fmt.Sprintf("result: %v", result))
-
-// 	// create data frame response.
-// 	// For an overview on data frames and how grafana handles them:
-// 	// https://grafana.com/docs/grafana/latest/developers/plugins/data-frames/
-// 	frame := data.NewFrame("response")
-
-// 	// add fields.
-// 	frame.Fields = append(frame.Fields,
-// 		data.NewField("time", nil, []time.Time{query.TimeRange.From, query.TimeRange.To}),
-// 		data.NewField("values", nil, []int64{10, 20}),
-// 	)
-
-// 	// add the frames to the response.
-// 	response.Frames = append(response.Frames, frame)
-
-// 	return response
 // }
 
 // CheckHealth handles health checks sent from Grafana to the plugin.
