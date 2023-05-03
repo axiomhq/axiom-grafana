@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/axiomhq/axiom-go/axiom"
+	axiQuery "github.com/axiomhq/axiom-go/axiom/query"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
@@ -27,16 +27,9 @@ var (
 
 // NewDatasource creates a new datasource instance.
 func NewDatasource(settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
-
-	// opts, err := settings.HTTPClientOptions()
-	// if err != nil {
-	// 	return nil, fmt.Errorf("http client options: %w", err)
-	// }
-
 	accessToken := ""
 	if token, exists := settings.DecryptedSecureJSONData["accessToken"]; exists {
 		// Use the decrypted API key.
-		// opts.Headers["Authorization"] = "Bearer " + accessToken
 		accessToken = token
 	}
 
@@ -103,6 +96,9 @@ type queryModel struct {
 }
 
 func (d *Datasource) query(ctx context.Context, host string, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
+
+	now := time.Now()
+
 	var response backend.DataResponse
 
 	// Unmarshal the JSON into our queryModel.
@@ -115,7 +111,7 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 	}
 
 	// make request to axiom
-	result, err := d.client.Query(ctx, qm.APL)
+	result, err := d.client.Query(ctx, qm.APL, axiQuery.SetStartTime(query.TimeRange.From), axiQuery.SetEndTime(query.TimeRange.To))
 	if err != nil {
 		log.DefaultLogger.Error("failed to get result from axiom")
 		log.DefaultLogger.Error(err.Error())
@@ -124,111 +120,98 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 
 	frame := data.NewFrame("response")
 
-	// defer func() {
-	// 	if r := recover(); r != nil {
-	// 		var ok bool
-	// 		err, ok = r.(error)
-	// 		if !ok {
-	// 			err = fmt.Errorf("pkg: %v", r)
-	// 			log.DefaultLogger.Error(err.Error())
-	// 		}
-	// 		log.DefaultLogger.Error(err.Error())
-	// 	}
-	// }()
+	defer func() {
+		if r := recover(); r != nil {
+			var ok bool
+			err, ok = r.(error)
+			if !ok {
+				err = fmt.Errorf("pkg: %v", r)
+				log.DefaultLogger.Error(err.Error())
+			}
+			log.DefaultLogger.Error(err.Error())
+		}
+	}()
 
 	table := result.Tables[0]
+
 	for index, f := range table.Fields {
-		fieldType := f.Type.String()
-
-		var field *data.Field
-		switch fieldType {
-		case "datetime":
-			field = data.NewField(f.Name, nil, []time.Time{})
-		case "integer", "int":
-			field = data.NewField(f.Name, nil, []int64{})
-		default:
-			field = data.NewField(f.Name, nil, []string{})
-		}
-
-		log.DefaultLogger.Info(field.Name, "<<<-field name")
-
-		for _, v := range table.Columns[index] {
-			if v == nil {
-				field.Append(nil)
-			}
-
-			switch fieldType {
-			case "datetime":
+		switch f.Type {
+		case axiQuery.TypeString:
+			values := make([]string, 0, len(table.Columns[index]))
+			iter := table.Columns[index].Values()
+			iter.Range(context.Background(), func(c context.Context, v any) error {
+				str, ok := v.(string)
+				if !ok {
+					log.DefaultLogger.Error("failed to convert value to string", "field", f.Name)
+					// return error
+					return fmt.Errorf("failed to convert value to string")
+				}
+				values = append(values, str)
+				return nil
+			})
+			frame.Fields = append(frame.Fields, data.NewField(f.Name, nil, values))
+		case axiQuery.TypeInt:
+			values := make([]float64, 0, len(table.Columns[index]))
+			iter := table.Columns[index].Values()
+			iter.Range(context.Background(), func(c context.Context, v any) error {
+				num, ok := v.(float64)
+				if !ok {
+					log.DefaultLogger.Error("failed to convert value to int")
+					// return error
+					return fmt.Errorf("failed to convert value to int")
+				}
+				values = append(values, num)
+				return nil
+			})
+			frame.Fields = append(frame.Fields, data.NewField(f.Name, nil, values))
+		case axiQuery.TypeReal, axiQuery.TypeLong:
+			values := make([]float64, 0, len(table.Columns[index]))
+			iter := table.Columns[index].Values()
+			iter.Range(context.Background(), func(c context.Context, v any) error {
+				num, ok := v.(float64)
+				if !ok {
+					log.DefaultLogger.Error("failed to convert value to real")
+					// return error
+					return fmt.Errorf("failed to convert value to real")
+				}
+				values = append(values, num)
+				return nil
+			})
+			frame.Fields = append(frame.Fields, data.NewField(f.Name, nil, values))
+		case axiQuery.TypeDateTime:
+			// convert []string to []*time.Time
+			times := make([]*time.Time, len(table.Columns[index]))
+			for i, v := range table.Columns[index] {
 				t, err := time.Parse(time.RFC3339, v.(string))
-				if err == nil {
-					field.Append(t)
+				if err != nil {
+					log.DefaultLogger.Error("failed to parse time")
+					log.DefaultLogger.Error(err.Error())
+					return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("time parse error: %v", err.Error()))
 				}
-			case "integer", "int":
-				log.DefaultLogger.Info("value is int64")
-				i, err := strconv.Atoi(v.(string))
-				if err == nil {
-					field.Append(i)
-				}
-			default:
-				log.DefaultLogger.Info(fmt.Sprintf("%v", v))
-				log.DefaultLogger.Info("value is string, or smth else", fieldType, v)
-				// field.Append(v.(string))
+				times[i] = &t
 			}
+			frame.Fields = append(frame.Fields, data.NewField(f.Name, nil, times))
+		case axiQuery.TypeTimespan:
+		case axiQuery.TypeArray:
+		case axiQuery.TypeDictionary:
+		default:
+			log.DefaultLogger.Error("unknown field type")
 		}
+	}
 
-		// for _, v := range table.Columns[index] {
-		// 	switch t := v.(type) {
-		// 	case time.Time:
-		// 		log.DefaultLogger.Error("type", t)
-		// 		log.DefaultLogger.Info("value is time.Time")
-		// 		log.DefaultLogger.Error(">>>its a known element type")
-		// 		field.Append(t)
-		// 	case string:
-		// 		log.DefaultLogger.Info("value is string")
-		// 		field.Append(t)
-		// 	case int64:
-		// 		log.DefaultLogger.Info("value is int64")
-		// 		field.Append(int64(t))
-		// 	default:
-		// 		log.DefaultLogger.Error(">>>weird value of column element")
-		// 		log.DefaultLogger.Info(fmt.Sprintf("%v", t))
-		// 	}
-		// }
-
-		frame.Fields = append(frame.Fields, field)
-
+	frame, err = data.LongToWide(frame, nil)
+	if err != nil {
+		log.DefaultLogger.Error("failed to convert long to wide")
+		log.DefaultLogger.Error(err.Error())
+		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("long to wide error: %v", err.Error()))
 	}
 
 	response.Frames = append(response.Frames, frame)
 
+	log.DefaultLogger.Info(fmt.Sprintf(">>> Query Duration: %v", time.Since(now)))
+
 	return response
 }
-
-// func getTypeArray(s string) interface{} {
-// 	switch s {
-// 	case "datetime":
-// 		return []time.Time{}
-// 	case "integer", "int":
-// 		return []int64{}
-// 	default:
-// 		return []string{}
-// 	}
-// }
-
-// func resolveValues(s string, columns []any, arr any) {
-// 	switch s {
-// 	case "datetime":
-// 		arr = arr.([]time.Time)
-// 		break
-// 	case "integer", "int":
-// 		arr = arr.([]int64)
-// 		break
-// 	default:
-// 		arr = arr.([]string)
-// 		break
-// 	}
-
-// }
 
 // CheckHealth handles health checks sent from Grafana to the plugin.
 // The main use case for these health checks is the test button on the
