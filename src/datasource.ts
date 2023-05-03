@@ -1,17 +1,16 @@
 import {
-  DataQueryRequest,
-  DataQueryResponse,
-  DataSourceApi,
+  // DataQueryRequest,
+  // DataQueryResponse,
+  // DataSourceApi,
+  // MutableDataFrame,
+  // FieldType,
   DataSourceInstanceSettings,
-  MutableDataFrame,
-  FieldType,
 } from '@grafana/data';
-import { getBackendSrv } from '@grafana/runtime';
-import { lastValueFrom } from 'rxjs';
+import { DataSourceWithBackend } from '@grafana/runtime';
 
-import { AxiomQuery, AxiomDataSourceOptions, APLResponse } from './types';
+import { AxiomQuery, AxiomDataSourceOptions } from './types';
 
-export class DataSource extends DataSourceApi<AxiomQuery, AxiomDataSourceOptions> {
+export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourceOptions> {
   url?: string;
 
   constructor(instanceSettings: DataSourceInstanceSettings<AxiomDataSourceOptions>) {
@@ -19,71 +18,80 @@ export class DataSource extends DataSourceApi<AxiomQuery, AxiomDataSourceOptions
     this.url = instanceSettings.url;
   }
 
-  async query(options: DataQueryRequest<AxiomQuery>): Promise<DataQueryResponse> {
-    console.log(options);
-    // data frames: https://grafana.com/docs/grafana/latest/developers/plugins/data-frames/
-    const { range } = options;
-    const from = range!.raw.from.toString();
-    const to = range!.raw.to.valueOf().toString();
+  // applyTemplateVariables(query: AxiomQuery) {
+  //   const templateSrv = getTemplateSrv();
+  //   return {
+  //     ...query,
+  //     apl: query.apl ? templateSrv.replace(query.apl) : '',
+  //     host: this.url ? templateSrv.replace(this.url) : '',
+  //   };
+  // }
 
-    const promises = options.targets.map(async (target) => {
-      const resp = await this.doRequest({ ...target, startTime: from, endTime: to });
-      console.log(resp);
+  // async query(options: DataQueryRequest<AxiomQuery>): Promise<DataQueryResponse> {
+  //   console.log(options);
+  //   // data frames: https://grafana.com/docs/grafana/latest/developers/plugins/data-frames/
+  //   const { range } = options;
+  //   const from = range!.raw.from.toString();
+  //   const to = range!.raw.to.valueOf().toString();
 
-      let frame: MutableDataFrame;
+  //   const promises = options.targets.map(async (target) => {
+  //     const resp = await this.doRequest({ ...target, startTime: from, endTime: to });
+  //     console.log(resp);
 
-      const table = resp?.data?.tables[0]!;
-      const fields = table.fields.map((f: any, index: number) => {
-        return { name: f.name, type: resolveFieldType(f.type), values: table.columns[index] };
-      });
-      frame = new MutableDataFrame({
-        name: table.name,
-        refId: target.refId,
-        fields,
-      });
+  //     let frame: MutableDataFrame;
 
-      return frame;
-    });
+  //     const table = resp?.data?.tables[0]!;
+  //     const fields = table.fields.map((f: any, index: number) => {
+  //       return { name: f.name, type: resolveFieldType(f.type), values: table.columns[index] };
+  //     });
+  //     frame = new MutableDataFrame({
+  //       name: table.name,
+  //       refId: target.refId,
+  //       fields,
+  //     });
 
-    return Promise.all(promises).then((data) => ({ data }));
-  }
+  //     return frame;
+  //   });
 
-  async doRequest(query: AxiomQuery) {
-    if (!query.apl) {
-      return;
-    }
-    const resp = getBackendSrv().fetch<APLResponse>({
-      method: 'POST',
-      url: `${this.url}/datasets/_apl`,
-      data: query,
-      params: {
-        format: 'tabular',
-      },
-    });
+  //   return Promise.all(promises).then((data) => ({ data }));
+  // }
 
-    return lastValueFrom(resp);
-  }
+  // async doRequest(query: AxiomQuery) {
+  //   if (!query.apl) {
+  //     return;
+  //   }
+  //   const resp = getBackendSrv().fetch<APLResponse>({
+  //     method: 'POST',
+  //     url: `${this.url}/datasets/_apl`,
+  //     data: query,
+  //     params: {
+  //       format: 'tabular',
+  //     },
+  //   });
 
-  async testDatasource() {
-    return await getBackendSrv().post(
-      `${this.url}/datasets/_apl`,
-      { apl: "['vercel'] | limit 1", startTime: 'now-7d', endTime: 'now' },
-      {
-        params: {
-          format: 'tabular',
-        },
-      }
-    );
-  }
+  //   return lastValueFrom(resp);
+  // }
+
+  // async testDatasource() {
+  //   return await getBackendSrv().post(
+  //     `${this.url}/datasets/_apl`,
+  //     { apl: "['vercel'] | limit 1", startTime: 'now-7d', endTime: 'now' },
+  //     {
+  //       params: {
+  //         format: 'tabular',
+  //       },
+  //     }
+  //   );
+  // }
 }
 
-const resolveFieldType = (axiomFieldType: string) => {
-  switch (axiomFieldType) {
-    case 'datetime':
-      return FieldType.time;
-    case 'integer':
-      return FieldType.number;
-    default:
-      return FieldType.string;
-  }
-};
+// const resolveFieldType = (axiomFieldType: string) => {
+//   switch (axiomFieldType) {
+//     case 'datetime':
+//       return FieldType.time;
+//     case 'integer':
+//       return FieldType.number;
+//     default:
+//       return FieldType.string;
+//   }
+// };

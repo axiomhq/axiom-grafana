@@ -25,7 +25,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
         <Input onChange={onConstantChange} value={constant} width={8} type="number" step="0.1" />
       </InlineField> */}
       <InlineField label="APL" labelWidth={8} tooltip="Axiom Processing Language query">
-        <Input onChange={onQueryTextChange} value={queryText || ''} />
+        <Input onChange={onQueryTextChange} value={queryText || ''} width={95.5} />
       </InlineField>
     </div>
   );

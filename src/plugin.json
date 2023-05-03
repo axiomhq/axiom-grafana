@@ -4,7 +4,9 @@
   "name": "Axiom",
   "id": "axiom-grafana-datasource",
   "metrics": true,
-  "logs": true,
+  "logs": false,
+  "backend": true,
+  "executable": "gpx_my_plugin",
   "info": {
     "description": "Query axiom through grafana",
     "author": {
