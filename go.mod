@@ -3,7 +3,7 @@ module github.com/axiomhq/axiom-grafana
 go 1.20
 
 require (
-	github.com/axiomhq/axiom-go v0.15.2-0.20230503140749-f0498b669a66
+	github.com/axiomhq/axiom-go v0.15.1
 	github.com/grafana/grafana-plugin-sdk-go v0.160.0
 )
 

@@ -113,100 +113,60 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 	// make request to axiom
 	result, err := d.client.Query(ctx, qm.APL, axiQuery.SetStartTime(query.TimeRange.From), axiQuery.SetEndTime(query.TimeRange.To))
 	if err != nil {
-		log.DefaultLogger.Error("failed to get result from axiom")
-		log.DefaultLogger.Error(err.Error())
+		log.DefaultLogger.Error("failed to retrieve result from axiom")
 		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("axiom error: %v", err.Error()))
 	}
 
 	frame := data.NewFrame("response")
 
-	defer func() {
-		if r := recover(); r != nil {
-			var ok bool
-			err, ok = r.(error)
-			if !ok {
-				err = fmt.Errorf("pkg: %v", r)
-				log.DefaultLogger.Error(err.Error())
-			}
-			log.DefaultLogger.Error(err.Error())
-		}
-	}()
+	// define fields
+	fields := []*data.Field{
+		data.NewField("_time", nil, []time.Time{}),
+	}
 
-	table := result.Tables[0]
+	for group := range result.Buckets.Totals[0].Group {
+		fields = append(fields,
+			data.NewField(group, nil, []string{}),
+		)
+	}
 
-	for index, f := range table.Fields {
-		switch f.Type {
-		case axiQuery.TypeString:
-			values := make([]string, 0, len(table.Columns[index]))
-			iter := table.Columns[index].Values()
-			iter.Range(context.Background(), func(c context.Context, v any) error {
-				str, ok := v.(string)
-				if !ok {
-					log.DefaultLogger.Error("failed to convert value to string", "field", f.Name)
-					// return error
-					return fmt.Errorf("failed to convert value to string")
-				}
-				values = append(values, str)
-				return nil
-			})
-			frame.Fields = append(frame.Fields, data.NewField(f.Name, nil, values))
-		case axiQuery.TypeInt:
-			values := make([]float64, 0, len(table.Columns[index]))
-			iter := table.Columns[index].Values()
-			iter.Range(context.Background(), func(c context.Context, v any) error {
-				num, ok := v.(float64)
-				if !ok {
-					log.DefaultLogger.Error("failed to convert value to int")
-					// return error
-					return fmt.Errorf("failed to convert value to int")
-				}
-				values = append(values, num)
-				return nil
-			})
-			frame.Fields = append(frame.Fields, data.NewField(f.Name, nil, values))
-		case axiQuery.TypeReal, axiQuery.TypeLong:
-			values := make([]float64, 0, len(table.Columns[index]))
-			iter := table.Columns[index].Values()
-			iter.Range(context.Background(), func(c context.Context, v any) error {
-				num, ok := v.(float64)
-				if !ok {
-					log.DefaultLogger.Error("failed to convert value to real")
-					// return error
-					return fmt.Errorf("failed to convert value to real")
-				}
-				values = append(values, num)
-				return nil
-			})
-			frame.Fields = append(frame.Fields, data.NewField(f.Name, nil, values))
-		case axiQuery.TypeDateTime:
-			// convert []string to []*time.Time
-			times := make([]*time.Time, len(table.Columns[index]))
-			for i, v := range table.Columns[index] {
-				t, err := time.Parse(time.RFC3339, v.(string))
-				if err != nil {
-					log.DefaultLogger.Error("failed to parse time")
-					log.DefaultLogger.Error(err.Error())
-					return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("time parse error: %v", err.Error()))
-				}
-				times[i] = &t
+	for _, agg := range result.Buckets.Totals[0].Aggregations {
+		fields = append(fields,
+			data.NewField(agg.Alias, nil, []float64{}),
+		)
+	}
+
+	frame.Fields = fields
+	log.DefaultLogger.Info("fields", "arr", frame.Fields)
+
+	// FIXME: This is a hack
+	for _, series := range result.Buckets.Series {
+		for _, g := range series.Groups {
+			values := make([]any, 0, len(g.Group)+len(g.Aggregations))
+			values = append(values, series.StartTime)
+			for _, field := range result.GroupBy {
+				v := g.Group[field]
+				// convert v to string regardless of type
+				strV := fmt.Sprintf("%v", v)
+				values = append(values, strV)
 			}
-			frame.Fields = append(frame.Fields, data.NewField(f.Name, nil, times))
-		case axiQuery.TypeTimespan:
-		case axiQuery.TypeArray:
-		case axiQuery.TypeDictionary:
-		default:
-			log.DefaultLogger.Error("unknown field type")
+			for _, agg := range g.Aggregations {
+				v := agg.Value
+				values = append(values, v)
+			}
+			frame.AppendRow(values...)
 		}
 	}
 
-	frame, err = data.LongToWide(frame, nil)
+	newFrame, err := data.LongToWide(frame, nil)
 	if err != nil {
 		log.DefaultLogger.Error("failed to convert long to wide")
 		log.DefaultLogger.Error(err.Error())
-		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("long to wide error: %v", err.Error()))
+		// if conversion fails, return the original frame
+		newFrame = frame
 	}
 
-	response.Frames = append(response.Frames, frame)
+	response.Frames = append(response.Frames, newFrame)
 
 	log.DefaultLogger.Info(fmt.Sprintf(">>> Query Duration: %v", time.Since(now)))
 
