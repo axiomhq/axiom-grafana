@@ -48,15 +48,15 @@ export function ConfigEditor(props: Props) {
       <Label
         description={
           <span>
-            You can create an API token in the{' '}
+            Create an API token from your&nbsp;
             <a href="https://app.axiom.co/profile" target="_blank" rel="noreferrer">
-              Axiom settings
+            Axiom organization settings
             </a>
             .
           </span>
         }
       >
-        Access Token
+        <h5>Authentication</h5>
       </Label>
       <InlineField label="API Token" labelWidth={12}>
         <SecretInput
@@ -72,7 +72,7 @@ export function ConfigEditor(props: Props) {
       { window.location.hostname === 'localhost' ? ( 
         <div>
           <Label description="The Axiom host to use. Leave the default value if you are not using a self-hosted Axiom instance.">
-            Axiom Host
+            <h6>Axiom Host</h6>
           </Label>
           <InlineField label="URL" labelWidth={12}>
             <Input
