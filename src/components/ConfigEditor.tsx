@@ -1,5 +1,5 @@
 import React, { ChangeEvent } from 'react';
-import { InlineField, SecretInput, Input } from '@grafana/ui';
+import { InlineField, SecretInput, Input, Label } from '@grafana/ui';
 import { DataSourcePluginOptionsEditorProps } from '@grafana/data';
 import { AxiomDataSourceOptions, MySecureJsonData } from '../types';
 
@@ -45,14 +45,19 @@ export function ConfigEditor(props: Props) {
 
   return (
     <div className="gf-form-group">
-      <InlineField label="Host" labelWidth={12}>
-        <Input
-          onChange={onHostChange}
-          value={jsonData.apiHost || 'https://api.axiom.co'}
-          placeholder="axiom host"
-          width={40}
-        />
-      </InlineField>
+      <Label
+        description={
+          <span>
+            You can create an API token in the{' '}
+            <a href="https://app.axiom.co/profile" target="_blank" rel="noreferrer">
+              Axiom settings
+            </a>
+            .
+          </span>
+        }
+      >
+        Access Token
+      </Label>
       <InlineField label="API Token" labelWidth={12}>
         <SecretInput
           isConfigured={(secureJsonFields && secureJsonFields.accessToken) as boolean}
@@ -63,6 +68,24 @@ export function ConfigEditor(props: Props) {
           onChange={onAccessTokenChange}
         />
       </InlineField>
+      <br />
+      { window.location.hostname === 'localhost' ? ( 
+        <div>
+          <Label description="The Axiom host to use. Leave the default value if you are not using a self-hosted Axiom instance.">
+            Axiom Host
+          </Label>
+          <InlineField label="URL" labelWidth={12}>
+            <Input
+              onChange={onHostChange}
+              value={jsonData.apiHost || 'https://api.axiom.co'}
+              placeholder="axiom host"
+              width={40}
+            />
+          </InlineField>
+        </div>
+      ) : (
+        ''
+      )}
     </div>
   );
 }
