@@ -17,7 +17,8 @@
   },
   "author": "Axiom",
   "contributors": [
-    "Islam Shehata <islam@axiom.co>"
+    "Islam Shehata <islam@axiom.co>",
+    "Seif Lotfy <seif@axiom.co>"
   ],
   "license": "Apache-2.0",
   "devDependencies": {
