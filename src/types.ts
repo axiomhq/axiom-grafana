@@ -2,12 +2,14 @@ import { DataQuery, DataSourceJsonData } from '@grafana/data';
 
 export interface AxiomQuery extends DataQuery {
   apl: string;
+  totals: boolean;
   startTime?: string;
   endTime?: string;
 }
 
 export const DEFAULT_QUERY: Partial<AxiomQuery> = {
   apl: '',
+  totals: false,
 };
 
 /**
