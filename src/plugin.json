@@ -2,23 +2,48 @@
   "$schema": "https://raw.githubusercontent.com/grafana/grafana/master/docs/sources/developers/plugins/plugin.schema.json",
   "type": "datasource",
   "name": "Axiom",
-  "id": "axiom-grafana-datasource",
+  "id": "axiomhq-axiom-datasource",
   "metrics": true,
-  "logs": false,
+  "logs": true,
   "backend": true,
-  "executable": "gpx_my_plugin",
+  "executable": "axiom-datasource-plugin",
   "info": {
     "description": "Query axiom through grafana",
     "author": {
-      "name": "Axiom"
+      "name": "Axiom, Inc.",
+      "url": "https://axiom.co"
     },
-    "keywords": ["datasource"],
+    "keywords": [
+      "datasource",
+      "axiom",
+      "events",
+      "metrics",
+      "logs"
+    ],
     "logos": {
       "small": "img/logo.svg",
       "large": "img/logo.svg"
     },
-    "links": [],
-    "screenshots": [],
+    "links": [
+      {
+        "name": "GitHub",
+        "url": "https://github.com/axiomhq/axiom-grafana"
+      },
+      {
+        "name": "Discord",
+        "url": "https://axiom.co/discord"
+      }
+    ],
+    "screenshots": [
+      {
+        "name": "Dashboard",
+        "path": "img/axiom-aws-lambda-dashboard.png"
+      },
+      {
+        "name": "DatasourceConfiguration",
+        "path": "img/datasource-configuration.png"
+      }
+    ],
     "version": "%VERSION%",
     "updated": "%TODAY%"
   },

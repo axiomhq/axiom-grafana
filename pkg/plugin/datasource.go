@@ -98,8 +98,6 @@ type queryModel struct {
 
 func (d *Datasource) query(ctx context.Context, host string, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
 
-	now := time.Now()
-
 	var response backend.DataResponse
 
 	// Unmarshal the JSON into our queryModel.
@@ -134,9 +132,7 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 	}
 
 	response.Frames = append(response.Frames, newFrame)
-
-	log.DefaultLogger.Info(fmt.Sprintf(">>> Query Duration: %v", time.Since(now)))
-
+	
 	return response
 }
 
@@ -161,7 +157,6 @@ func buildFrameSeries(result *axiQuery.Result) *data.Frame {
 	}
 
 	frame.Fields = fields
-	log.DefaultLogger.Info("fields", "arr", frame.Fields)
 
 	// FIXME: This is a hack
 	for _, series := range result.Buckets.Series {
@@ -203,7 +198,6 @@ func buildFrameTotals(result *axiQuery.Result) *data.Frame {
 	}
 
 	frame.Fields = fields
-	log.DefaultLogger.Info("fields", "arr", frame.Fields)
 
 	for _, g := range result.Buckets.Totals {
 		values := make([]any, 0, len(g.Group)+len(g.Aggregations))
