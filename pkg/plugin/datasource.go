@@ -92,7 +92,8 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 }
 
 type queryModel struct {
-	APL string `json:"apl"`
+	APL    string `json:"apl"`
+	Totals bool   `json:"totals"`
 }
 
 func (d *Datasource) query(ctx context.Context, host string, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
@@ -117,6 +118,29 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("axiom error: %v", err.Error()))
 	}
 
+	var frame *data.Frame
+	if qm.Totals {
+		frame = buildFrameTotals(result)
+	} else {
+		frame = buildFrameSeries(result)
+	}
+
+	newFrame, err := data.LongToWide(frame, nil)
+	if err != nil {
+		log.DefaultLogger.Error("failed to convert long to wide")
+		log.DefaultLogger.Error(err.Error())
+		// if conversion fails, return the original frame
+		newFrame = frame
+	}
+
+	response.Frames = append(response.Frames, newFrame)
+
+	log.DefaultLogger.Info(fmt.Sprintf(">>> Query Duration: %v", time.Since(now)))
+
+	return response
+}
+
+func buildFrameSeries(result *axiQuery.Result) *data.Frame {
 	frame := data.NewFrame("response")
 
 	// define fields
@@ -142,7 +166,7 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 	// FIXME: This is a hack
 	for _, series := range result.Buckets.Series {
 		for _, g := range series.Groups {
-			values := make([]any, 0, len(g.Group)+len(g.Aggregations))
+			values := make([]any, 0, 1+len(g.Group)+len(g.Aggregations)) // +1 for time
 			values = append(values, series.StartTime)
 			for _, field := range result.GroupBy {
 				v := g.Group[field]
@@ -157,20 +181,46 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 			frame.AppendRow(values...)
 		}
 	}
+	return frame
+}
 
-	newFrame, err := data.LongToWide(frame, nil)
-	if err != nil {
-		log.DefaultLogger.Error("failed to convert long to wide")
-		log.DefaultLogger.Error(err.Error())
-		// if conversion fails, return the original frame
-		newFrame = frame
+func buildFrameTotals(result *axiQuery.Result) *data.Frame {
+	frame := data.NewFrame("response")
+
+	// define fields
+	var fields []*data.Field
+
+	for group := range result.Buckets.Totals[0].Group {
+		fields = append(fields,
+			data.NewField(group, nil, []string{}),
+		)
 	}
 
-	response.Frames = append(response.Frames, newFrame)
+	for _, agg := range result.Buckets.Totals[0].Aggregations {
+		fields = append(fields,
+			data.NewField(agg.Alias, nil, []float64{}),
+		)
+	}
 
-	log.DefaultLogger.Info(fmt.Sprintf(">>> Query Duration: %v", time.Since(now)))
+	frame.Fields = fields
+	log.DefaultLogger.Info("fields", "arr", frame.Fields)
 
-	return response
+	for _, g := range result.Buckets.Totals {
+		values := make([]any, 0, len(g.Group)+len(g.Aggregations))
+		for _, field := range result.GroupBy {
+			v := g.Group[field]
+			// convert v to string regardless of type
+			strV := fmt.Sprintf("%v", v)
+			values = append(values, strV)
+		}
+		for _, agg := range g.Aggregations {
+			v := agg.Value
+			values = append(values, v)
+		}
+		frame.AppendRow(values...)
+	}
+
+	return frame
 }
 
 // CheckHealth handles health checks sent from Grafana to the plugin.
