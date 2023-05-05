@@ -34,7 +34,16 @@
         "url": "https://axiom.co/discord"
       }
     ],
-    "screenshots": [],
+    "screenshots": [
+      {
+        "name": "Dashboard",
+        "path": "img/axiom-aws-lambda-dashboard.png"
+      },
+      {
+        "name": "DatasourceConfiguration",
+        "path": "img/datasource-configuration.png"
+      }
+    ],
     "version": "%VERSION%",
     "updated": "%TODAY%"
   },
