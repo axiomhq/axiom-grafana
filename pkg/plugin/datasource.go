@@ -98,6 +98,19 @@ type queryModel struct {
 
 func (d *Datasource) query(ctx context.Context, host string, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
 
+	// recover from panic
+	defer func() {
+		if r := recover(); r != nil {
+			var ok bool
+			err, ok := r.(error)
+			if !ok {
+				err = fmt.Errorf("pkg: %v", r)
+				log.DefaultLogger.Error(err.Error())
+			}
+			log.DefaultLogger.Error(err.Error())
+		}
+	}()
+
 	var response backend.DataResponse
 
 	// Unmarshal the JSON into our queryModel.
@@ -125,14 +138,13 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 
 	newFrame, err := data.LongToWide(frame, nil)
 	if err != nil {
-		log.DefaultLogger.Error("failed to convert long to wide")
-		log.DefaultLogger.Error(err.Error())
+		log.DefaultLogger.Warn(err.Error())
 		// if conversion fails, return the original frame
 		newFrame = frame
 	}
 
 	response.Frames = append(response.Frames, newFrame)
-	
+
 	return response
 }
 

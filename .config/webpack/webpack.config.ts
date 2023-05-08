@@ -96,7 +96,7 @@ const config = async (env): Promise<Configuration> => ({
       },
       {
         test: /\.css$/,
-        use: ["style-loader", "css-loader"]
+        use: ['style-loader', 'css-loader'],
       },
       {
         test: /\.s[ac]ss$/,
@@ -153,6 +153,10 @@ const config = async (env): Promise<Configuration> => ({
         { from: 'img/**/*', to: '.', noErrorOnMissing: true }, // Optional
         { from: 'libs/**/*', to: '.', noErrorOnMissing: true }, // Optional
         { from: 'static/**/*', to: '.', noErrorOnMissing: true }, // Optional
+        {
+          from: '../node_modules/@axiomhq/axiom-frontend-workers/dist',
+          to: './workers',
+        },
       ],
     }),
     // Replace certain template-variables in the README and plugin.json
