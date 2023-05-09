@@ -97,20 +97,6 @@ type queryModel struct {
 }
 
 func (d *Datasource) query(ctx context.Context, host string, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
-
-	// recover from panic
-	defer func() {
-		if r := recover(); r != nil {
-			var ok bool
-			err, ok := r.(error)
-			if !ok {
-				err = fmt.Errorf("pkg: %v", r)
-				log.DefaultLogger.Error(err.Error())
-			}
-			log.DefaultLogger.Error(err.Error())
-		}
-	}()
-
 	var response backend.DataResponse
 
 	// Unmarshal the JSON into our queryModel.
@@ -130,12 +116,11 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 	}
 
 	var frame *data.Frame
-	// if qm.Totals {
-	// 	frame = buildFrameTotals(result)
-	// } else {
-	// 	frame = buildFrameSeries(result)
-	// }
-	frame = buildFrameSeries(result)
+	if qm.Totals {
+		frame = buildFrameTotals(result)
+	} else {
+		frame = buildFrameSeries(result)
+	}
 
 	newFrame, err := data.LongToWide(frame, nil)
 	if err != nil {
