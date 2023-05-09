@@ -130,11 +130,12 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 	}
 
 	var frame *data.Frame
-	if qm.Totals {
-		frame = buildFrameTotals(result)
-	} else {
-		frame = buildFrameSeries(result)
-	}
+	// if qm.Totals {
+	// 	frame = buildFrameTotals(result)
+	// } else {
+	// 	frame = buildFrameSeries(result)
+	// }
+	frame = buildFrameSeries(result)
 
 	newFrame, err := data.LongToWide(frame, nil)
 	if err != nil {
