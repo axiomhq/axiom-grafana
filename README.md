@@ -30,6 +30,21 @@ Example:
 GF_INSTALL_PLUGINS="axiom-axiom-datasource"
 ```
 
+### Via Source (for Dev/Local)
+
+```shell
+$ yarn install
+$ yarn dev
+```
+
+In another shell run the following
+
+```shell
+$ mage -v && docker-compose up
+```
+
+Then open http://localhost:3000 and add Axiom as a datasource.
+
 ## Configuration
 
 1. Add a new data source in Grafana.
