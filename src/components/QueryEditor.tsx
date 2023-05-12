@@ -54,8 +54,12 @@ if (isClientSide) {
 type Props = QueryEditorProps<DataSource, AxiomQuery, AxiomDataSourceOptions>;
 
 export function QueryEditor({ query, onChange, onRunQuery }: Props) {
+  const [queryStr, setQueryStr] = React.useState('');
+  const { apl: queryText } = query;
+
   const onQueryTextChange = (apl: string) => {
     onChange({ ...query, apl });
+    setQueryStr(apl);
   };
 
   const onTotalsChange = (e: FormEvent<HTMLInputElement>) => {
@@ -65,7 +69,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
     });
   };
 
-  const { apl: queryText } = query;
+  
 
   return (
     <FieldSet>
@@ -74,10 +78,34 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
           onBlur={onQueryTextChange}
           height="140px"
           width="500"
-          value={queryText || ''}
+          value={queryStr}
           language="kusto"
           showLineNumbers={true}
           showMiniMap={false}
+          onEditorDidMount={async (editor, monaco) => {
+            const kustoLanguageId = 'kusto';
+            const kustoLanguage = monaco.languages.getLanguages().find((l) => l.id === kustoLanguageId);
+            if (kustoLanguage) {
+              // If the kusto language is already registered, we can proceed immediately
+              setTimeout(() => {
+                // using timeout to  ensure the editor is fully loaded and we can have syntax highlighting on initial render
+                setQueryStr(queryText)
+              }, 200)
+              
+            } else {
+              // If the kusto language isn't registered, we need to wait for it to finish loading
+              await new Promise((resolve) => {
+                const disposable = monaco.languages.onLanguage(kustoLanguageId, () => {
+                  disposable.dispose();
+                  resolve(undefined);
+                  setTimeout(() => {
+                    setQueryStr(queryText)
+                  }, 200)
+                  
+                });
+              });
+            }
+          }}
         />
       </Field>
       <InlineFieldRow>
