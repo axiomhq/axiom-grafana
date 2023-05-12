@@ -4,11 +4,9 @@ import {
   DataQueryResponse,
   DataSourceInstanceSettings,
 } from '@grafana/data';
-import { DataSourceWithBackend } from '@grafana/runtime';
+import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
 
 import { AxiomQuery, AxiomDataSourceOptions } from './types';
-
-import { getTemplateSrv } from '@grafana/runtime'
 
 export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourceOptions> {
   url?: string;
