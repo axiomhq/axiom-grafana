@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -219,13 +220,40 @@ func buildFrameTotals(result *axiQuery.Result) *data.Frame {
 // The main use case for these health checks is the test button on the
 // datasource configuration page which allows users to verify that
 // a datasource is working as expected.
-func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
-	// TODO: create a valid healthcheck
-	var status = backend.HealthStatusOk
-	var message = "Data source is working"
+func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
+	// first try to validate the credentials
+	// NOTE: axiom-go doesn't do anything useful today
+	err := d.client.ValidateCredentials(ctx)
+	if err != nil {
+		return &backend.CheckHealthResult{
+			Status:  backend.HealthStatusError,
+			Message: fmt.Sprintf("error validating credentials: %v", err),
+		}, nil
+	}
+
+	// perform an APL query that we expect to fail (empty)
+	// validate that we get HTTP 400, this gives high confidence
+	// that we got past network and authentication issues and looked at our request
+	// it also should be somewhat inexpensive for the server
+	var axiErr *axiom.Error
+	var msg = "Did not receive expected error"
+	_, err = d.client.Query(ctx, "")
+	if err != nil && errors.As(err, &axiErr) {
+		if axiErr.Status == 400 {
+			// expected 400 for empty query, HEALTHY
+			return &backend.CheckHealthResult{
+				Status:  backend.HealthStatusOk,
+				Message: "Data source is working",
+			}, nil
+		}
+	}
+
+	if err != nil {
+		msg = err.Error()
+	}
 
 	return &backend.CheckHealthResult{
-		Status:  status,
-		Message: message,
+		Status:  backend.HealthStatusError,
+		Message: msg,
 	}, nil
 }
