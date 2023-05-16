@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/axiomhq/axiom-go/axiom"
@@ -110,17 +111,19 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 	}
 
 	// make request to axiom
-	result, err := d.client.Query(ctx, qm.APL, axiQuery.SetStartTime(query.TimeRange.From), axiQuery.SetEndTime(query.TimeRange.To))
+	result, err := d.QueryOverride(ctx, qm.APL, axiQuery.SetStartTime(query.TimeRange.From), axiQuery.SetEndTime(query.TimeRange.To))
 	if err != nil {
 		log.DefaultLogger.Error("failed to retrieve result from axiom")
 		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("axiom error: %v", err.Error()))
 	}
 
 	var frame *data.Frame
-	if qm.Totals {
-		frame = buildFrameTotals(result)
+	if len(result.Matches) > 0 {
+		frame = buildFrameMatches(result)
+	} else if qm.Totals {
+		frame = buildFrameTotals(&result.Result)
 	} else {
-		frame = buildFrameSeries(result)
+		frame = buildFrameSeries(&result.Result)
 	}
 
 	newFrame, err := data.LongToWide(frame, nil)
@@ -214,6 +217,63 @@ func buildFrameTotals(result *axiQuery.Result) *data.Frame {
 	}
 
 	return frame
+}
+
+func buildFrameMatches(result *AplQueryResponse) *data.Frame {
+	frame := data.NewFrame("response").SetMeta(&data.FrameMeta{
+		PreferredVisualization: data.VisTypeLogs,
+	})
+
+	// define fields
+	for _, proj := range result.LegacyRequest.Projections {
+		switch proj.Alias {
+		case "_time", "_sysTime":
+			frame.Fields = append(frame.Fields, data.NewField(proj.Alias, nil, []time.Time{}))
+		default:
+			frame.Fields = append(frame.Fields, data.NewField(proj.Alias, nil, []string{}))
+		}
+	}
+
+	for _, match := range result.Matches {
+		// convert structure to map of field values
+		vals := make(map[string]any)
+		walkMatch(match.Data, nil, func(k string, v any) {
+			vals[k] = fmt.Sprintf("%v", v)
+		})
+
+		// build values
+		values := make([]any, 0, len(frame.Fields))
+		for _, field := range frame.Fields {
+			switch field.Name {
+			case "_time":
+				values = append(values, match.Time)
+			case "_sysTime":
+				values = append(values, match.SysTime)
+			default:
+				values = append(values, vals[field.Name])
+			}
+		}
+
+		frame.AppendRow(values...)
+	}
+
+	return frame
+}
+
+func walkMatch(m any, path []string, valFunc func(string, any)) {
+	switch m := m.(type) {
+	case map[string]any:
+		for k, v := range m {
+			if k == "" {
+				// results returned by Axiom sometimes exist with an empty key at the end
+				walkMatch(v, path, valFunc)
+			} else {
+				walkMatch(v, append(path, k), valFunc)
+			}
+		}
+	default:
+		valFunc(strings.Join(path, "."), m)
+	}
 }
 
 // CheckHealth handles health checks sent from Grafana to the plugin.
