@@ -8,7 +8,7 @@
   "backend": true,
   "executable": "axiom-datasource-plugin",
   "info": {
-    "description": "Query axiom through grafana",
+    "description": "Query Axiom through Grafana",
     "author": {
       "name": "Axiom, Inc.",
       "url": "https://axiom.co"
