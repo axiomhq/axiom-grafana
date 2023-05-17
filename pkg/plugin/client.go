@@ -90,5 +90,9 @@ func (d *Datasource) QueryOverride(ctx context.Context, apl string, options ...q
 		return nil, err
 	}
 
+	// For compatibility, we must also match this behavior:
+	// https://github.com/axiomhq/axiom-go/blob/59f0e2fe1fb5008403b1e365329d9d528096d02e/axiom/datasets.go#L170
+	res.GroupBy = res.LegacyRequest.GroupBy
+
 	return &res, nil
 }
