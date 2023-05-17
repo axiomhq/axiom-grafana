@@ -48,29 +48,7 @@
     "updated": "%TODAY%"
   },
   "dependencies": {
-    "grafanaDependency": "^9.3.8",
+    "grafanaDependency": ">=9.3.8",
     "plugins": []
-  },
-  "routes": [
-    {
-      "path": "datasets",
-      "method": "POST",
-      "url": "{{ .JsonData.apiHost }}/v1/datasets",
-      "reqRole": "Editor",
-      "headers": [
-        {
-          "name": "Authorization",
-          "content": "Bearer {{ .SecureJsonData.accessToken }}"
-        },
-        {
-          "name": "UserAgent",
-          "content": "axiom-grafana/v1.0.0"
-        },
-        {
-          "name": "Content-Type",
-          "content": "application/json"
-        }
-      ]
-    }
-  ]
+  }
 }

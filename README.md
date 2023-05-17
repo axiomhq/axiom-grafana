@@ -2,7 +2,7 @@
 
 This is a Grafana Datasource plugin that allows you to query event data (including metrics, logs, and other time series data) from [Axiom](https://www.axiom.co), enabling you to visualize and analyze your data in Grafana dashboards.
 
-![Axiom Datasource Plugin Screenshot](https://path/to/screenshot.png)
+![Axiom Datasource Plugin Screenshot](src/img/axiom-aws-lambda-dashboard.png)
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@ Before using this plugin, you need to:
 ### Via Grafana CLI
 
 ```
-grafana-cli plugins install axiom-axiom-datasource
+grafana-cli plugins install axiomhq-axiom-datasource
 ```
 
 ### Via Docker
@@ -27,7 +27,7 @@ grafana-cli plugins install axiom-axiom-datasource
 Example:
 
 ```
-GF_INSTALL_PLUGINS="axiom-axiom-datasource"
+GF_INSTALL_PLUGINS="axiomhq-axiom-datasource"
 ```
 
 ### Via Source (for Dev/Local)
