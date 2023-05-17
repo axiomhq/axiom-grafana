@@ -106,14 +106,12 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 
 	err := json.Unmarshal(query.JSON, &qm)
 	if err != nil {
-		log.DefaultLogger.Info("failed to unmarshal query json")
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 	}
 
 	// make request to axiom
 	result, err := d.QueryOverride(ctx, qm.APL, axiQuery.SetStartTime(query.TimeRange.From), axiQuery.SetEndTime(query.TimeRange.To))
 	if err != nil {
-		log.DefaultLogger.Error("failed to retrieve result from axiom")
 		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("axiom error: %v", err.Error()))
 	}
 
