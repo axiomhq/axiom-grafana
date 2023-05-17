@@ -2,8 +2,6 @@
 
 The Grafana data source plugin is the easiest way to query event data from Axiom directly in Grafana dashboards.
 
-![Axiom Datasource Plugin Dashboard Screenshot](/public/plugins/axiomhq-axiom-datasource/img/axiom-aws-lambda-dashboard.png)
-
 ## Requirements
 
 This plugin has the following requirements:
@@ -18,8 +16,6 @@ This plugin has the following requirements:
 1. Navigate to the official Grafana Plugins page
 2. Select the Axiom data source plugin in the Installation tab
 3. Configure the data source with a name and your Axiom API token
-
-![Axiom data source plugin configuration screenshot](/public/plugins/axiomhq-axiom-datasource/img/datasource-configuration.png)
 
 ### Install plugin on local Grafana
 
