@@ -1,26 +1,35 @@
-# Axiom Datasource Plugin for Grafana
+# Instantly visualize Axiom data in Grafana
 
-This is a Grafana Datasource plugin that allows you to query event data (including metrics, logs, and other time series data) from [Axiom](https://www.axiom.co), enabling you to visualize and analyze your data in Grafana dashboards.
-
+The Grafana data source plugin is the easiest way to query event data from Axiom directly in Grafana dashboards.
 
 ![Axiom Datasource Plugin Dashboard Screenshot](/public/plugins/axiomhq-axiom-datasource/img/axiom-aws-lambda-dashboard.png)
 
-## Prerequisites
+## Requirements
 
-Before using this plugin, you need to:
+This plugin has the following requirements:
 
-1. Create an account at [app.axiom.co](https://app.axiom.co).
-2. Generate a read-only API Token from your Axiom account.
+- An Axiom account
+- An Axiom API token with query permissions for desired datasets
 
 ## Installation
 
-### Via Grafana CLI
+### Install plugin on Grafana Cloud
+
+1. Navigate to the official Grafana Plugins page
+2. Select the Axiom data source plugin in the Installation tab
+3. Configure the data source with a name and your Axiom API token
+
+![Axiom data source plugin configuration screenshot](/public/plugins/axiomhq-axiom-datasource/img/datasource-configuration.png)
+
+### Install plugin on local Grafana
+
+#### Install with Grafana CLI
 
 ```
 grafana-cli plugins install axiomhq-axiom-datasource
 ```
 
-### Via Docker
+#### Install with Docker
 
 1. Add the plugin to your `docker-compose.yml` or `Dockerfile`
 2. Set the environment variable `GF_INSTALL_PLUGINS` to include the plugin
@@ -31,46 +40,25 @@ Example:
 GF_INSTALL_PLUGINS="axiomhq-axiom-datasource"
 ```
 
-### Via Source (for Dev/Local)
+#### Install for local development
 
 ```shell
 $ yarn install
 $ yarn dev
 ```
 
-In another shell run the following
+Run the following in another shell:
 
 ```shell
 $ mage -v && docker-compose up
 ```
 
-Then open http://localhost:3000 and add Axiom as a datasource.
+Open http://localhost:3000 and add Axiom as a data source.
 
-## Configuration
+## Visualizing data
 
-1. Add a new data source in Grafana.
-2. Select the "Axiom" data source type.
-3. Enter your Axiom read-only API Token.
-4. Save and test the data source.
+The Axiom data source plugin provides a custom editor to query and visualize your Axiom event data.
 
-![Axiom Datasource Plugin Configuration Screenshot](/public/plugins/axiomhq-axiom-datasource/img/datasource-configuration.png)
-
-## Query Editor
-
-The Axiom Datasource Plugin provides a custom query editor to build and visualize your Axiom event data.
-
-1. Create a new panel in Grafana.
-2. Select the Axiom data source.
-3. Use the query editor to choose the desired metrics, dimensions, and filters.
-
-## Troubleshooting
-
-If you encounter any issues or need help, please join our [Discord community](https://axiom.co/discord) for assistance and support, or open an issue on the [GitHub repository](https://github.com/axiomhq/axiom-grafana/issues).
-
-## Contributing
-
-Contributions are welcome! Please submit pull requests or open issues on the [GitHub repository](https://github.com/axiomhq/axiom-grafana).
-
-## License
-
-This project is licensed under the Apache License, Version 2.0 - see the [LICENSE](LICENSE) file for details.
+1. Create a new panel in Grafana
+2. Select the Axiom data source
+3. Use the query editor to filter, transform and analyze your data
