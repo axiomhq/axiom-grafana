@@ -145,12 +145,10 @@ func buildFrameSeries(result *axiQuery.Result) *data.Frame {
 		data.NewField("_time", nil, []time.Time{}),
 	}
 
-	groups := make([]string, 0, len(result.Buckets.Totals[0].Group))
 	for group := range result.Buckets.Totals[0].Group {
 		fields = append(fields,
 			data.NewField(group, nil, []string{}),
 		)
-		groups = append(groups, group)
 	}
 
 	for _, agg := range result.Buckets.Totals[0].Aggregations {
@@ -166,7 +164,7 @@ func buildFrameSeries(result *axiQuery.Result) *data.Frame {
 		for _, g := range series.Groups {
 			values := make([]any, 0, 1+len(g.Group)+len(g.Aggregations)) // +1 for time
 			values = append(values, series.StartTime)
-			for _, field := range groups {
+			for _, field := range result.GroupBy {
 				v := g.Group[field]
 				// convert v to string regardless of type
 				strV := fmt.Sprintf("%v", v)
