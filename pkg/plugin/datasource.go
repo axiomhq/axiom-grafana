@@ -45,9 +45,17 @@ func NewDatasource(settings backend.DataSourceInstanceSettings) (instancemgmt.In
 		host = apiHost
 	}
 
-	client, err := axiom.NewClient(
+	options := []axiom.Option{
 		axiom.SetAPITokenConfig(accessToken),
 		axiom.SetURL(host),
+	}
+
+	if orgID, hasOrgID := data["orgID"]; hasOrgID {
+		options = append(options, axiom.SetOrganizationID(orgID))
+	}
+
+	client, err := axiom.NewClient(
+		options...,
 	)
 	if err != nil {
 		return nil, err

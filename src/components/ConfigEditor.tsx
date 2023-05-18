@@ -15,6 +15,14 @@ export function ConfigEditor(props: Props) {
     onOptionsChange({ ...options, jsonData });
   };
 
+  const onOrgIDChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const jsonData = {
+      ...options.jsonData,
+      orgID: event.target.value,
+    };
+    onOptionsChange({ ...options, jsonData });
+  };
+
   // Secure field (only sent to the backend)
   const onAccessTokenChange = (event: ChangeEvent<HTMLInputElement>) => {
     onOptionsChange({
@@ -66,6 +74,15 @@ export function ConfigEditor(props: Props) {
           width={40}
           onReset={onResetAccessToken}
           onChange={onAccessTokenChange}
+        />
+      </InlineField>
+      <br />
+      <InlineField label="Org ID" labelWidth={12}>
+        <Input
+            value={jsonData.orgID || ''}
+            placeholder=""
+            width={40}
+            onChange={onOrgIDChange}
         />
       </InlineField>
       <br />
