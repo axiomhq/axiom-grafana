@@ -104,6 +104,48 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
                   
                 });
               });
+
+              // Should have awaited until the lang was registered so safe to access kusto?              
+              try {
+
+                // TODO: await fetch dataset infos, map to schema
+                const schema =  {
+                  Plugins: [],
+                  Databases: {
+                    db: {
+                      Name: 'db',
+                      Tables: {
+                        'http-logs': {
+                          Name: 'http-logs',
+                          OrderedColumns: [
+                            {
+                              Name: 'status',
+                              Type: 'System.String',
+                              CslType: 'string'
+                            }
+                          ]
+                        }
+                      },
+                      Functions: {},
+                    },
+                  },
+                };
+
+                const workerAccessor = await (window as any).monaco.languages.kusto.getKustoWorker();
+        
+                const model = editor.getModel();
+                if (model && model.uri) {
+                  const worker = await workerAccessor(model.uri);
+                  worker.setSchemaFromShowSchema(
+                    schema,
+                    JSON.stringify(schema), // Not really sure what to put here - it's the database connection string
+                    'db', // Should be the name of the database in the schema
+                    []
+                  );
+                }
+              } catch (e) {
+                console.warn(e);
+              }
             }
           }}
         />
