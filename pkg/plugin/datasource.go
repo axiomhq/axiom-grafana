@@ -228,7 +228,7 @@ func buildFrameTotals(result *axiQuery.Result) *data.Frame {
 
 func buildFrameMatches(result *AplQueryResponse) *data.Frame {
 	frame := data.NewFrame("response").SetMeta(&data.FrameMeta{
-		PreferredVisualization: data.VisTypeLogs,
+		PreferredVisualization: data.VisTypeTable,
 	})
 
 	// define fields
