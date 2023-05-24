@@ -125,6 +125,10 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 	}
 
+	if query.QueryType == "schemaLookup" {
+		return d.schemaLookup(ctx)
+	}
+
 	// make request to axiom
 	result, err := d.QueryOverride(ctx, qm.APL, axiQuery.SetStartTime(query.TimeRange.From), axiQuery.SetEndTime(query.TimeRange.To))
 	if err != nil {
@@ -132,13 +136,49 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 	}
 
 	var frame *data.Frame
-	if len(result.Matches) > 0 {
-		frame = buildFrameMatches(result)
-	} else if qm.Totals {
-		frame = buildFrameTotals(&result.Result)
+	if len(result.Result.Buckets.Totals) > 0 {
+		if qm.Totals {
+			frame = buildFrameTotals(&result.Result)
+		} else {
+			frame = buildFrameSeries(&result.Result)
+		}
 	} else {
-		frame = buildFrameSeries(&result.Result)
+		frame = buildFrameMatches(result)
 	}
+
+	newFrame, err := data.LongToWide(frame, nil)
+	if err != nil {
+		log.DefaultLogger.Warn(err.Error())
+		// if conversion fails, return the original frame
+		newFrame = frame
+	}
+
+	response.Frames = append(response.Frames, newFrame)
+
+	return response
+}
+
+func (d *Datasource) schemaLookup(ctx context.Context) backend.DataResponse {
+	var response backend.DataResponse
+	frame := data.NewFrame("response")
+	frame.Fields = []*data.Field{
+		data.NewField("schema", nil, []string{}),
+	}
+
+	dsf, err := d.DatasetFields(ctx)
+	if err != nil {
+		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("axiom schema lookup error: %v", err.Error()))
+	}
+
+	dsfJSON, err := json.Marshal(dsf)
+	if err != nil {
+		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("schema marshal error: %v", err.Error()))
+	}
+
+	values := make([]any, 1)
+	values[0] = string(dsfJSON)
+
+	frame.AppendRow(values...)
 
 	newFrame, err := data.LongToWide(frame, nil)
 	if err != nil {

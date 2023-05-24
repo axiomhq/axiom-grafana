@@ -24,6 +24,37 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
     };
   }
 
+  async lookupSchema() {
+    const schemaQuery: AxiomQuery = {
+      apl: "",
+      totals: false,
+      refId: "a",
+      queryType: "schemaLookup"
+    };
+    const request = {
+      targets: [
+        {
+          ...schemaQuery,
+          refId: 'metricFindQuery',
+        },
+      ],
+    } as DataQueryRequest<AxiomQuery>;
+
+    let res: DataQueryResponse | undefined;
+
+    try {
+      res = await this.query(request).toPromise();
+    } catch (err) {
+      return Promise.reject(err);
+    }
+
+    if (res && (!res.data.length || !res.data[0].fields.length)) {
+      return [];
+    }
+
+    return res ? res.data[0].fields[0].values.buffer : {};
+  }
+
   async metricFindQuery(query: AxiomQuery, options?: any) {
     const request = {
       targets: [
