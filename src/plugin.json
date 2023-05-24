@@ -6,6 +6,7 @@
   "metrics": true,
   "logs": true,
   "backend": true,
+  "alerting": true,
   "executable": "axiom-datasource-plugin",
   "info": {
     "description": "Query Axiom through Grafana",
