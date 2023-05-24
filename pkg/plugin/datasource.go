@@ -161,7 +161,7 @@ func buildFrameSeries(result *axiQuery.Result) *data.Frame {
 
 	for _, agg := range result.Buckets.Totals[0].Aggregations {
 		fields = append(fields,
-			data.NewField(agg.Alias, nil, []float64{}),
+			data.NewField(agg.Alias, nil, []*float64{}),
 		)
 	}
 
@@ -180,7 +180,12 @@ func buildFrameSeries(result *axiQuery.Result) *data.Frame {
 			}
 			for _, agg := range g.Aggregations {
 				v := agg.Value
-				values = append(values, v)
+				switch v := v.(type) {
+				case float64:
+					values = append(values, &v)
+				default:
+					values = append(values, nil)
+				}
 			}
 			frame.AppendRow(values...)
 		}
@@ -202,7 +207,7 @@ func buildFrameTotals(result *axiQuery.Result) *data.Frame {
 
 	for _, agg := range result.Buckets.Totals[0].Aggregations {
 		fields = append(fields,
-			data.NewField(agg.Alias, nil, []float64{}),
+			data.NewField(agg.Alias, nil, []*float64{}),
 		)
 	}
 
@@ -218,7 +223,12 @@ func buildFrameTotals(result *axiQuery.Result) *data.Frame {
 		}
 		for _, agg := range g.Aggregations {
 			v := agg.Value
-			values = append(values, v)
+			switch v := v.(type) {
+			case float64:
+				values = append(values, &v)
+			default:
+				values = append(values, nil)
+			}
 		}
 		frame.AppendRow(values...)
 	}
