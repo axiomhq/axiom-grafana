@@ -129,6 +129,10 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 		return d.schemaLookup(ctx)
 	}
 
+	if qm.APL == "" {
+		return backend.DataResponse{}
+	}
+
 	// make request to axiom
 	result, err := d.QueryOverride(ctx, qm.APL, axiQuery.SetStartTime(query.TimeRange.From), axiQuery.SetEndTime(query.TimeRange.To))
 	if err != nil {
