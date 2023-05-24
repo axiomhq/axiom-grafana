@@ -35,6 +35,10 @@ func NewDatasource(settings backend.DataSourceInstanceSettings) (instancemgmt.In
 		accessToken = token
 	}
 
+	if !IsPersonalToken(accessToken) {
+		return nil, fmt.Errorf("personal token required")
+	}
+
 	var data map[string]string
 	err := json.Unmarshal(settings.JSONData, &data)
 	if err != nil {
@@ -45,17 +49,15 @@ func NewDatasource(settings backend.DataSourceInstanceSettings) (instancemgmt.In
 		host = apiHost
 	}
 
-	options := []axiom.Option{
-		axiom.SetAPITokenConfig(accessToken),
-		axiom.SetURL(host),
-	}
-
-	if orgID, hasOrgID := data["orgID"]; hasOrgID {
-		options = append(options, axiom.SetOrganizationID(orgID))
+	orgID, hasOrgID := data["orgID"]
+	if !hasOrgID && len(orgID) > 0 {
+		return nil, fmt.Errorf("orgID is required")
 	}
 
 	client, err := axiom.NewClient(
-		options...,
+		axiom.SetToken(accessToken),
+		axiom.SetURL(host),
+		axiom.SetOrganizationID(orgID),
 	)
 	if err != nil {
 		return nil, err
@@ -65,6 +67,11 @@ func NewDatasource(settings backend.DataSourceInstanceSettings) (instancemgmt.In
 		client:  client,
 		apiHost: host,
 	}, nil
+}
+
+// IsPersonalToken returns true if the given token is a personal token.
+func IsPersonalToken(token string) bool {
+	return strings.HasPrefix(token, "xapt-")
 }
 
 // Datasource is an example datasource which can respond to data queries, reports

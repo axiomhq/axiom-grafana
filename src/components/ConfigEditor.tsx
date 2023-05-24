@@ -56,28 +56,24 @@ export function ConfigEditor(props: Props) {
       <Label
         description={
           <span>
-            Create an API token from your&nbsp;
-            <a href="https://app.axiom.co/profile" target="_blank" rel="noreferrer">
-            Axiom organization settings
-            </a>
-            .
+            Create a Personal Token from your Axiom account settings.
           </span>
         }
       >
         <h5>Authentication</h5>
       </Label>
-      <InlineField label="API Token" labelWidth={12}>
+      <InlineField label="Personal Token" labelWidth={17}>
         <SecretInput
           isConfigured={(secureJsonFields && secureJsonFields.accessToken) as boolean}
           value={secureJsonData.accessToken || ''}
-          placeholder="xaat-***********"
+          placeholder="xapt-***********"
           width={40}
           onReset={onResetAccessToken}
           onChange={onAccessTokenChange}
         />
       </InlineField>
       <br />
-      <InlineField label="Org ID" labelWidth={12}>
+      <InlineField label="Org ID" labelWidth={17}>
         <Input
             value={jsonData.orgID || ''}
             placeholder=""
@@ -91,7 +87,7 @@ export function ConfigEditor(props: Props) {
           <Label description="The Axiom host to use. Leave the default value if you are not using a self-hosted Axiom instance.">
             <h6>Axiom Host</h6>
           </Label>
-          <InlineField label="URL" labelWidth={12}>
+          <InlineField label="URL" labelWidth={17}>
             <Input
               onChange={onHostChange}
               value={jsonData.apiHost || 'https://api.axiom.co'}
