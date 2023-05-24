@@ -82,19 +82,23 @@ export function ConfigEditor(props: Props) {
         />
       </InlineField>
       <br />
-      <div>
-        <Label description="The Axiom host to use. Leave the default value if you are not using a self-hosted Axiom instance.">
-          <h6>Axiom Host</h6>
-        </Label>
-        <InlineField label="URL" labelWidth={17}>
-          <Input
-            onChange={onHostChange}
-            value={jsonData.apiHost || 'https://api.axiom.co'}
-            placeholder="axiom host"
-            width={40}
-          />
-        </InlineField>
-      </div>
+      { window.location.hostname === 'localhost' || window.location.hostname.endsWith('axiomtestlabs.co') ? (
+        <div>
+          <Label description="The Axiom host to use. Leave the default value if you are not using a self-hosted Axiom instance.">
+            <h6>Axiom Host</h6>
+          </Label>
+          <InlineField label="URL" labelWidth={17}>
+            <Input
+              onChange={onHostChange}
+              value={jsonData.apiHost || 'https://api.axiom.co'}
+              placeholder="axiom host"
+              width={40}
+            />
+          </InlineField>
+        </div>
+      ) : (
+        ''
+      )}
     </div>
   );
 }
