@@ -25,7 +25,7 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
   }
 
   async lookupSchema() {
-    const schemaQuery : AxiomQuery = {
+    const schemaQuery: AxiomQuery = {
       apl: "",
       totals: false,
       refId: "a",
