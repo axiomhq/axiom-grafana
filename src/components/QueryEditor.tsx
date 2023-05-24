@@ -3,6 +3,7 @@ import { CodeEditor, FieldSet, Field, InlineField, InlineFieldRow, InlineSwitch 
 import { QueryEditorProps } from '@grafana/data';
 import { DataSource } from '../datasource';
 import { AxiomDataSourceOptions, AxiomQuery } from '../types';
+import { DatasetFields, mapDatasetInfosToSchema } from '../schema';
 
 const workersAssets = require('@axiomhq/axiom-frontend-workers');
 
@@ -53,7 +54,7 @@ if (isClientSide) {
 
 type Props = QueryEditorProps<DataSource, AxiomQuery, AxiomDataSourceOptions>;
 
-export function QueryEditor({ query, onChange, onRunQuery }: Props) {
+export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) {
   const [queryStr, setQueryStr] = React.useState('');
   const { apl: queryText } = query;
 
@@ -105,6 +106,30 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
                 });
               });
             }
+
+            // Should have awaited until the lang was registered so safe to access kusto?
+            try {
+              let res  = await datasource.lookupSchema();
+              // the entire schema is returned in one JSON value
+              let parsed = JSON.parse(res[0]);
+              let schema = mapDatasetInfosToSchema(parsed as DatasetFields[])
+
+              const workerAccessor = await (window as any).monaco.languages.kusto.getKustoWorker();
+
+              const model = editor.getModel();
+              if (model && model.uri) {
+                const worker = await workerAccessor(model.uri);
+                worker.setSchemaFromShowSchema(
+                    schema,
+                    JSON.stringify(schema), // Not really sure what to put here - it's the database connection string
+                    'db', // Should be the name of the database in the schema
+                    []
+                );
+              }
+            } catch (e) {
+              console.warn(e);
+            }
+
           }}
         />
       </Field>
