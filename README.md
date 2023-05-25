@@ -30,20 +30,6 @@ Example:
 GF_INSTALL_PLUGINS="axiomhq-axiom-datasource"
 ```
 
-### Via Source (for Dev/Local)
-
-```shell
-$ yarn install
-$ yarn dev
-```
-
-In another shell run the following
-
-```shell
-$ mage -v && docker-compose up
-```
-
-Then open http://localhost:3000 and add Axiom as a datasource.
 
 ## Configuration
 
@@ -63,10 +49,6 @@ The Axiom Datasource Plugin provides a custom query editor to build and visualiz
 ## Troubleshooting
 
 If you encounter any issues or need help, please join our [Discord community](https://axiom.co/discord) for assistance and support, or open an issue on the [GitHub repository](https://github.com/axiomhq/axiom-grafana/issues).
-
-## Contributing
-
-Contributions are welcome! Please submit pull requests or open issues on the [GitHub repository](https://github.com/axiomhq/axiom-grafana).
 
 ## License
 
