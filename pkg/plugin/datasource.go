@@ -202,7 +202,7 @@ func buildFrameSeries(result *axiQuery.Result) *data.Frame {
 		data.NewField("_time", nil, []time.Time{}),
 	}
 
-	for group := range result.Buckets.Totals[0].Group {
+	for _, group := range result.GroupBy {
 		fields = append(fields,
 			data.NewField(group, nil, []string{}),
 		)
@@ -223,11 +223,6 @@ func buildFrameSeries(result *axiQuery.Result) *data.Frame {
 			values = append(values, series.StartTime)
 			for _, field := range result.GroupBy {
 				v := g.Group[field]
-				// TODO: look more into it why Group[field] equal nil.
-				// ignore when a value is nil. to avoid having mismatch values and fields length which causes internal server error
-				if v == nil {
-					continue
-				}
 				// convert v to string regardless of type
 				strV := fmt.Sprintf("%v", v)
 				values = append(values, strV)
