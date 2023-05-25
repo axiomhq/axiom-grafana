@@ -114,6 +114,17 @@ type queryModel struct {
 }
 
 func (d *Datasource) query(ctx context.Context, host string, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
+	defer func() {
+		if r := recover(); r != nil {
+			var ok bool
+			err, ok := r.(error)
+			if !ok {
+				err = fmt.Errorf("pkg: %v", r)
+				log.DefaultLogger.Error(err.Error())
+			}
+			log.DefaultLogger.Error(err.Error())
+		}
+	}()
 
 	var response backend.DataResponse
 
@@ -125,9 +136,9 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 	}
 
-	if query.QueryType == "schemaLookup" {
-		return d.schemaLookup(ctx)
-	}
+	// if query.QueryType == "schemaLookup" {
+	// 	return d.schemaLookup(ctx)
+	// }
 
 	if qm.APL == "" {
 		return backend.DataResponse{}
@@ -139,25 +150,19 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("axiom error: %v", err.Error()))
 	}
 
-	var frame *data.Frame
-	if len(result.Result.Buckets.Totals) > 0 {
-		if qm.Totals {
-			frame = buildFrameTotals(&result.Result)
-		} else {
-			frame = buildFrameSeries(&result.Result)
-		}
-	} else {
-		frame = buildFrameMatches(result)
-	}
+	log.DefaultLogger.Info("result", "result", result.Tables[0].Buckets.Field)
 
-	newFrame, err := data.LongToWide(frame, nil)
-	if err != nil {
-		log.DefaultLogger.Warn(err.Error())
-		// if conversion fails, return the original frame
-		newFrame = frame
-	}
+	// var frame *data.Frame
+	frame := buildFrameTotals(&result.Result)
 
-	response.Frames = append(response.Frames, newFrame)
+	// newFrame, err := data.LongToWide(frame, nil)
+	// if err != nil {
+	// 	log.DefaultLogger.Warn(err.Error())
+	// 	// if conversion fails, return the original frame
+	// 	newFrame = frame
+	// }
+
+	response.Frames = append(response.Frames, frame)
 
 	return response
 }
@@ -184,149 +189,230 @@ func (d *Datasource) schemaLookup(ctx context.Context) backend.DataResponse {
 
 	frame.AppendRow(values...)
 
-	newFrame, err := data.LongToWide(frame, nil)
-	if err != nil {
-		log.DefaultLogger.Warn(err.Error())
-		// if conversion fails, return the original frame
-		newFrame = frame
-	}
+	// newFrame, err := data.LongToWide(frame, nil)
+	// if err != nil {
+	// 	log.DefaultLogger.Warn("schemaLookup", "error", err.Error())
+	// 	// if conversion fails, return the original frame
+	// 	newFrame = frame
+	// }
 
-	response.Frames = append(response.Frames, newFrame)
+	response.Frames = append(response.Frames, frame)
 
 	return response
 }
 
-func buildFrameSeries(result *axiQuery.Result) *data.Frame {
-	frame := data.NewFrame("response")
+// func buildFrameSeries(result *axiQuery.Result) *data.Frame {
+// 	frame := data.NewFrame("response")
 
-	// define fields
-	fields := []*data.Field{
-		data.NewField("_time", nil, []time.Time{}),
-	}
+// 	// define fields
+// 	fields := []*data.Field{
+// 		data.NewField("_time", nil, []time.Time{}),
+// 	}
 
-	for group := range result.Buckets.Totals[0].Group {
-		fields = append(fields,
-			data.NewField(group, nil, []string{}),
-		)
-	}
+// 	for group := range result.Buckets.Totals[0].Group {
+// 		fields = append(fields,
+// 			data.NewField(group, nil, []string{}),
+// 		)
+// 	}
 
-	for _, agg := range result.Buckets.Totals[0].Aggregations {
-		fields = append(fields,
-			data.NewField(agg.Alias, nil, []*float64{}),
-		)
-	}
+// 	for _, agg := range result.Buckets.Totals[0].Aggregations {
+// 		fields = append(fields,
+// 			data.NewField(agg.Alias, nil, []*float64{}),
+// 		)
+// 	}
 
-	frame.Fields = fields
+// 	frame.Fields = fields
 
-	// FIXME: This is a hack
-	for _, series := range result.Buckets.Series {
-		for _, g := range series.Groups {
-			values := make([]any, 0, 1+len(g.Group)+len(g.Aggregations)) // +1 for time
-			values = append(values, series.StartTime)
-			for _, field := range result.GroupBy {
-				v := g.Group[field]
-				// convert v to string regardless of type
-				strV := fmt.Sprintf("%v", v)
-				values = append(values, strV)
-			}
-			for _, agg := range g.Aggregations {
-				v := agg.Value
-				switch v := v.(type) {
-				case float64:
-					values = append(values, &v)
-				default:
-					values = append(values, nil)
-				}
-			}
-			frame.AppendRow(values...)
-		}
-	}
-	return frame
-}
+// 	// FIXME: This is a hack
+// 	for _, series := range result.Buckets.Series {
+// 		for _, g := range series.Groups {
+// 			values := make([]any, 0, 1+len(g.Group)+len(g.Aggregations)) // +1 for time
+// 			values = append(values, series.StartTime)
+// 			for _, field := range result.GroupBy {
+// 				v := g.Group[field]
+// 				// convert v to string regardless of type
+// 				strV := fmt.Sprintf("%v", v)
+// 				values = append(values, strV)
+// 			}
+// 			for _, agg := range g.Aggregations {
+// 				v := agg.Value
+// 				switch v := v.(type) {
+// 				case float64:
+// 					values = append(values, &v)
+// 				default:
+// 					values = append(values, nil)
+// 				}
+// 			}
+// 			frame.AppendRow(values...)
+// 		}
+// 	}
+// 	return frame
+// }
 
 func buildFrameTotals(result *axiQuery.Result) *data.Frame {
 	frame := data.NewFrame("response")
 
 	// define fields
-	var fields []*data.Field
-
-	for group := range result.Buckets.Totals[0].Group {
-		fields = append(fields,
-			data.NewField(group, nil, []string{}),
-		)
+	// var fields []*data.Field
+	for index, f := range result.Tables[0].Fields {
+		log.DefaultLogger.Info("table 0", "index", index, "field", f.Name)
 	}
 
-	for _, agg := range result.Buckets.Totals[0].Aggregations {
-		fields = append(fields,
-			data.NewField(agg.Alias, nil, []*float64{}),
-		)
-	}
+	table := result.Tables[0]
+	fields := make([]*data.Field, 0, len(table.Fields))
 
-	frame.Fields = fields
+	for index, f := range table.Fields {
+		log.DefaultLogger.Info("table 1", "index", index, "field", f.Name)
 
-	for _, g := range result.Buckets.Totals {
-		values := make([]any, 0, len(g.Group)+len(g.Aggregations))
-		for _, field := range result.GroupBy {
-			v := g.Group[field]
-			// convert v to string regardless of type
-			strV := fmt.Sprintf("%v", v)
-			values = append(values, strV)
-		}
-		for _, agg := range g.Aggregations {
-			v := agg.Value
-			switch v := v.(type) {
-			case float64:
-				values = append(values, &v)
-			default:
-				values = append(values, nil)
+		switch f.Type {
+		case axiQuery.TypeString:
+			values := make([]string, 0, len(table.Columns[index]))
+			iter := table.Columns[index].Values()
+			iter.Range(context.Background(), func(c context.Context, v any) error {
+				str, ok := v.(string)
+				if !ok {
+					log.DefaultLogger.Error("failed to convert value to string", "field", f.Name)
+					// return error
+					return fmt.Errorf("failed to convert value to string")
+				}
+				values = append(values, str)
+				return nil
+			})
+			//frame.Fields = append(frame.Fields, data.NewField(f.Name, nil, values))
+			fields = append(fields, data.NewField(f.Name, nil, values))
+		case axiQuery.TypeInt:
+			values := make([]float64, 0, len(table.Columns[index]))
+			iter := table.Columns[index].Values()
+			iter.Range(context.Background(), func(c context.Context, v any) error {
+				num, ok := v.(float64)
+				if !ok {
+					log.DefaultLogger.Error("failed to convert value to int")
+					// return error
+					return fmt.Errorf("failed to convert value to int")
+				}
+				values = append(values, num)
+				return nil
+			})
+			fields = append(fields, data.NewField(f.Name, nil, values))
+			//frame.Fields = append(frame.Fields, data.NewField(f.Name, nil, values))
+		case axiQuery.TypeReal, axiQuery.TypeLong:
+			values := make([]float64, 0, len(table.Columns[index]))
+			iter := table.Columns[index].Values()
+			iter.Range(context.Background(), func(c context.Context, v any) error {
+				num, ok := v.(float64)
+				if !ok {
+					log.DefaultLogger.Error("failed to convert value to real")
+					// return error
+					return fmt.Errorf("failed to convert value to real")
+				}
+				values = append(values, num)
+				return nil
+			})
+			fields = append(fields, data.NewField(f.Name, nil, values))
+			//frame.Fields = append(frame.Fields, data.NewField(f.Name, nil, values))
+		case axiQuery.TypeDateTime:
+			// convert []string to []*time.Time
+			times := make([]*time.Time, len(table.Columns[index]))
+			for i, v := range table.Columns[index] {
+				t, err := time.Parse(time.RFC3339, v.(string))
+				if err != nil {
+					log.DefaultLogger.Error("failed to parse time")
+					log.DefaultLogger.Error(err.Error())
+					// return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("time parse error: %v", err.Error()))
+					continue
+				}
+				times[i] = &t
 			}
-		}
-		frame.AppendRow(values...)
-	}
-
-	return frame
-}
-
-func buildFrameMatches(result *AplQueryResponse) *data.Frame {
-	frame := data.NewFrame("response").SetMeta(&data.FrameMeta{
-		PreferredVisualization: data.VisTypeTable,
-	})
-
-	// define fields
-	for _, proj := range result.LegacyRequest.Projections {
-		switch proj.Alias {
-		case "_time", "_sysTime":
-			frame.Fields = append(frame.Fields, data.NewField(proj.Alias, nil, []time.Time{}))
+			fields = append(fields, data.NewField(f.Name, nil, values))
+			//frame.Fields = append(frame.Fields, data.NewField(f.Name, nil, times))
+		case axiQuery.TypeTimespan:
+		case axiQuery.TypeArray:
+		case axiQuery.TypeDictionary:
 		default:
-			frame.Fields = append(frame.Fields, data.NewField(proj.Alias, nil, []string{}))
+			log.DefaultLogger.Error("unknown field type", "type", f.Type, "name", f.Name)
 		}
 	}
 
-	for _, match := range result.Matches {
-		// convert structure to map of field values
-		vals := make(map[string]any)
-		walkMatch(match.Data, nil, func(k string, v any) {
-			vals[k] = fmt.Sprintf("%v", v)
-		})
+	// for index, f := range result.Tables[0].Fields {
+	// 	log.DefaultLogger.Info("found field", "name", f.Name)
+	// 	fields = append(fields,
+	// 		data.NewField(f.Name, nil, result.Tables[0].Columns[index].Values()),
+	// 	)
+	// }
 
-		// build values
-		values := make([]any, 0, len(frame.Fields))
-		for _, field := range frame.Fields {
-			switch field.Name {
-			case "_time":
-				values = append(values, match.Time)
-			case "_sysTime":
-				values = append(values, match.SysTime)
-			default:
-				values = append(values, vals[field.Name])
-			}
-		}
+	// for _, agg := range result.Tables[1]. {
+	// 	fields = append(fields,
+	// 		data.NewField(agg.Alias, nil, []*float64{}),
+	// 	)
+	// }
 
-		frame.AppendRow(values...)
-	}
+	// frame.Fields = fields
+
+	// for _, g := range result.Tables[0].Groups {
+	// 	values := make([]any, 0, len(g.Group)+len(g.Aggregations))
+	// 	for _, field := range result.GroupBy {
+	// 		v := g.Group[field]
+	// 		// convert v to string regardless of type
+	// 		strV := fmt.Sprintf("%v", v)
+	// 		values = append(values, strV)
+	// 	}
+	// 	for _, agg := range g.Aggregations {
+	// 		v := agg.Value
+	// 		switch v := v.(type) {
+	// 		case float64:
+	// 			values = append(values, &v)
+	// 		default:
+	// 			values = append(values, nil)
+	// 		}
+	// 	}
+	// 	frame.AppendRow(values...)
+	// }
 
 	return frame
 }
+
+// func buildFrameMatches(result *AplQueryResponse) *data.Frame {
+// 	frame := data.NewFrame("response").SetMeta(&data.FrameMeta{
+// 		PreferredVisualization: data.VisTypeTable,
+// 	})
+
+// 	// define fields
+// 	for _, proj := range result.Tables {
+// 		for _, f := range proj.Fields {
+// 			switch f.Name {
+// 			case "_time", "_sysTime":
+// 				frame.Fields = append(frame.Fields, data.NewField(f.Name, nil, []time.Time{}))
+// 			default:
+// 				frame.Fields = append(frame.Fields, data.NewField(f.Name, nil, []string{}))
+// 			}
+// 		}
+// 	}
+
+// 	for _, match := range result.Tables[1].Buckets {
+// 		// convert structure to map of field values
+// 		vals := make(map[string]any)
+// 		walkMatch(match.Data, nil, func(k string, v any) {
+// 			vals[k] = fmt.Sprintf("%v", v)
+// 		})
+
+// 		// build values
+// 		values := make([]any, 0, len(frame.Fields))
+// 		for _, field := range frame.Fields {
+// 			switch field.Name {
+// 			case "_time":
+// 				values = append(values, match.Time)
+// 			case "_sysTime":
+// 				values = append(values, match.SysTime)
+// 			default:
+// 				values = append(values, vals[field.Name])
+// 			}
+// 		}
+
+// 		frame.AppendRow(values...)
+// 	}
+
+// 	return frame
+// }
 
 func walkMatch(m any, path []string, valFunc func(string, any)) {
 	switch m := m.(type) {

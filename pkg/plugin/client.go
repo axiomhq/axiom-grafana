@@ -3,11 +3,12 @@ package plugin
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/url"
+
 	"github.com/axiomhq/axiom-go/axiom"
 	"github.com/axiomhq/axiom-go/axiom/query"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
-	"net/http"
-	"net/url"
 )
 
 // All the code in this file is working around the fact that axiom-go hides
@@ -64,7 +65,7 @@ func (d *Datasource) QueryOverride(ctx context.Context, apl string, options ...q
 	queryParams := struct {
 		Format string `url:"format"`
 	}{
-		Format: "legacy", // Hardcode legacy APL format for now.
+		Format: "tabular", // Hardcode legacy APL format for now.
 	}
 
 	path, err := url.JoinPath(d.apiHost, "v1/datasets/_apl")
@@ -87,12 +88,13 @@ func (d *Datasource) QueryOverride(ctx context.Context, apl string, options ...q
 
 	var res AplQueryResponse
 	if _, err = d.client.Do(req, &res); err != nil {
+		log.DefaultLogger.Error("Error from axiom resp", "error", err, "req", apl, "options", opts)
 		return nil, err
 	}
 
 	// For compatibility, we must also match this behavior:
 	// https://github.com/axiomhq/axiom-go/blob/59f0e2fe1fb5008403b1e365329d9d528096d02e/axiom/datasets.go#L170
-	res.GroupBy = res.LegacyRequest.GroupBy
+	// res.GroupBy = res.LegacyRequest.GroupBy
 
 	return &res, nil
 }
