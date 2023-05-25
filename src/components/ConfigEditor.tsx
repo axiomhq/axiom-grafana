@@ -82,7 +82,7 @@ export function ConfigEditor(props: Props) {
         />
       </InlineField>
       <br />
-      { window.location.hostname === 'localhost' ? ( 
+      { window.location.hostname === 'localhost' || window.location.hostname.endsWith('axiomtestlabs.co') ? (
         <div>
           <Label description="The Axiom host to use. Leave the default value if you are not using a self-hosted Axiom instance.">
             <h6>Axiom Host</h6>
