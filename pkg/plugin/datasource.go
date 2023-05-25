@@ -122,7 +122,7 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 
 	err := json.Unmarshal(query.JSON, &qm)
 	if err != nil {
-		// log the actual error since it will be included in the Grafana server log and return a more generic message to the end user.
+		// Log the actual error since it will be included in the Grafana server log and return a more generic message to the end user.
 		log.DefaultLogger.Error(err.Error())
 		return backend.ErrDataResponse(backend.StatusInternal, "Could not parse query")
 	}
