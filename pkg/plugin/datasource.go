@@ -146,18 +146,16 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 		} else {
 			frame = buildFrameSeries(&result.Result)
 		}
+		// Only convert longToWide if There is Aggregations
+		frame, err = data.LongToWide(frame, nil)
+		if err != nil {
+			log.DefaultLogger.Error("transformation from long to wide failed", err.Error())
+		}
 	} else {
 		frame = buildFrameMatches(result)
 	}
 
-	newFrame, err := data.LongToWide(frame, nil)
-	if err != nil {
-		log.DefaultLogger.Warn(err.Error())
-		// if conversion fails, return the original frame
-		newFrame = frame
-	}
-
-	response.Frames = append(response.Frames, newFrame)
+	response.Frames = append(response.Frames, frame)
 
 	return response
 }
@@ -225,10 +223,16 @@ func buildFrameSeries(result *axiQuery.Result) *data.Frame {
 			values = append(values, series.StartTime)
 			for _, field := range result.GroupBy {
 				v := g.Group[field]
+				// TODO: look more into it.
+				// ignore when a value is nil. to avoid having mismatch values and fields length which causes internal server error
+				if v == nil {
+					continue
+				}
 				// convert v to string regardless of type
 				strV := fmt.Sprintf("%v", v)
 				values = append(values, strV)
 			}
+
 			for _, agg := range g.Aggregations {
 				v := agg.Value
 				switch v := v.(type) {
@@ -238,9 +242,11 @@ func buildFrameSeries(result *axiQuery.Result) *data.Frame {
 					values = append(values, nil)
 				}
 			}
+
 			frame.AppendRow(values...)
 		}
 	}
+
 	return frame
 }
 
