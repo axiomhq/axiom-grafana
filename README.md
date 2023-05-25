@@ -30,7 +30,6 @@ Example:
 GF_INSTALL_PLUGINS="axiomhq-axiom-datasource"
 ```
 
-
 ## Configuration
 
 1. Add a new data source in Grafana.

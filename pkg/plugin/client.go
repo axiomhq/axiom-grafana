@@ -2,12 +2,11 @@ package plugin
 
 import (
 	"context"
-	"fmt"
-	"github.com/axiomhq/axiom-go/axiom"
-	"github.com/axiomhq/axiom-go/axiom/query"
-	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"net/http"
 	"net/url"
+
+	"github.com/axiomhq/axiom-go/axiom"
+	"github.com/axiomhq/axiom-go/axiom/query"
 )
 
 // All the code in this file is working around the fact that axiom-go hides
@@ -73,8 +72,6 @@ func (d *Datasource) QueryOverride(ctx context.Context, apl string, options ...q
 	} else if path, err = axiom.AddURLOptions(path, queryParams); err != nil {
 		return nil, err
 	}
-
-	log.DefaultLogger.Info(fmt.Sprintf("query path is: %s", path))
 
 	req, err := d.client.NewRequest(ctx, http.MethodPost, path, AplQueryRequest{
 		Options: opts,

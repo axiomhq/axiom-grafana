@@ -122,7 +122,9 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 
 	err := json.Unmarshal(query.JSON, &qm)
 	if err != nil {
-		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
+		// log the actual error since it will be included in the Grafana server log and return a more generic message to the end user.
+		log.DefaultLogger.Error(err.Error())
+		return backend.ErrDataResponse(backend.StatusInternal, "Could not parse query")
 	}
 
 	if query.QueryType == "schemaLookup" {
@@ -152,7 +154,8 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 
 	newFrame, err := data.LongToWide(frame, nil)
 	if err != nil {
-		log.DefaultLogger.Warn(err.Error())
+		// Provide some more context for the warning in case the error doesn't provide any.
+		log.DefaultLogger.Warn("Failed to convert frame from long to wide format")
 		// if conversion fails, return the original frame
 		newFrame = frame
 	}
@@ -353,9 +356,11 @@ func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRe
 	// NOTE: axiom-go doesn't do anything useful today
 	err := d.client.ValidateCredentials(ctx)
 	if err != nil {
+		log.DefaultLogger.Error("Failed to validate credentials", "error", err)
 		return &backend.CheckHealthResult{
-			Status:  backend.HealthStatusError,
-			Message: fmt.Sprintf("error validating credentials: %v", err),
+			Status: backend.HealthStatusError,
+			// simple error message, not the actual error
+			Message: "error with datasource",
 		}, nil
 	}
 
@@ -377,7 +382,8 @@ func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRe
 	}
 
 	if err != nil {
-		msg = err.Error()
+		log.DefaultLogger.Error("Failed to query Axiom", "error", err)
+		msg = "Failed to query Axiom"
 	}
 
 	return &backend.CheckHealthResult{
