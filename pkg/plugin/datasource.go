@@ -142,6 +142,7 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 	}
 
 	var frame *data.Frame
+	var newframe *data.Frame
 	if len(result.Result.Buckets.Totals) > 0 {
 		if qm.Totals {
 			frame = buildFrameTotals(&result.Result)
@@ -149,7 +150,7 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 			frame = buildFrameSeries(&result.Result)
 		}
 		// Only convert longToWide if There is Aggregations
-		frame, err = data.LongToWide(frame, nil)
+		newframe, err = data.LongToWide(frame, nil)
 		if err != nil {
 			log.DefaultLogger.Error("transformation from long to wide failed", err.Error())
 		}
@@ -157,7 +158,11 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 		frame = buildFrameMatches(result)
 	}
 
-	response.Frames = append(response.Frames, frame)
+	if newframe != nil {
+		response.Frames = append(response.Frames, newframe)
+	} else {
+		response.Frames = append(response.Frames, frame)
+	}
 
 	return response
 }
