@@ -258,7 +258,7 @@ func buildFrameTotals(result *axiQuery.Result) *data.Frame {
 	// define fields
 	var fields []*data.Field
 
-	for group := range result.Buckets.Totals[0].Group {
+	for _, group := range result.GroupBy {
 		fields = append(fields,
 			data.NewField(group, nil, []string{}),
 		)
