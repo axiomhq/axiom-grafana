@@ -25,6 +25,7 @@ var (
 	_ backend.QueryDataHandler      = (*Datasource)(nil)
 	_ backend.CheckHealthHandler    = (*Datasource)(nil)
 	_ instancemgmt.InstanceDisposer = (*Datasource)(nil)
+	_ backend.CallResourceHandler   = (*Datasource)(nil)
 )
 
 // NewDatasource creates a new datasource instance.
@@ -63,10 +64,14 @@ func NewDatasource(settings backend.DataSourceInstanceSettings) (instancemgmt.In
 		return nil, err
 	}
 
-	return &Datasource{
+	ds := &Datasource{
 		client:  client,
 		apiHost: host,
-	}, nil
+	}
+	resourceHandler := ds.newResourceHandler()
+	ds.CallResourceHandler = resourceHandler
+
+	return ds, nil
 }
 
 // IsPersonalToken returns true if the given token is a personal token.
@@ -77,6 +82,7 @@ func IsPersonalToken(token string) bool {
 // Datasource is an example datasource which can respond to data queries, reports
 // its health and has streaming skills.
 type Datasource struct {
+	backend.CallResourceHandler
 	apiHost string
 	client  *axiom.Client
 }
@@ -127,10 +133,6 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 		return backend.ErrDataResponse(backend.StatusInternal, "Could not parse query")
 	}
 
-	if query.QueryType == "schemaLookup" {
-		return d.schemaLookup(ctx)
-	}
-
 	if qm.APL == "" {
 		return backend.DataResponse{}
 	}
@@ -156,40 +158,6 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 	if err != nil {
 		// Provide some more context for the warning in case the error doesn't provide any.
 		log.DefaultLogger.Warn("Failed to convert frame from long to wide format")
-		// if conversion fails, return the original frame
-		newFrame = frame
-	}
-
-	response.Frames = append(response.Frames, newFrame)
-
-	return response
-}
-
-func (d *Datasource) schemaLookup(ctx context.Context) backend.DataResponse {
-	var response backend.DataResponse
-	frame := data.NewFrame("response")
-	frame.Fields = []*data.Field{
-		data.NewField("schema", nil, []string{}),
-	}
-
-	dsf, err := d.DatasetFields(ctx)
-	if err != nil {
-		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("axiom schema lookup error: %v", err.Error()))
-	}
-
-	dsfJSON, err := json.Marshal(dsf)
-	if err != nil {
-		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("schema marshal error: %v", err.Error()))
-	}
-
-	values := make([]any, 1)
-	values[0] = string(dsfJSON)
-
-	frame.AppendRow(values...)
-
-	newFrame, err := data.LongToWide(frame, nil)
-	if err != nil {
-		log.DefaultLogger.Warn(err.Error())
 		// if conversion fails, return the original frame
 		newFrame = frame
 	}

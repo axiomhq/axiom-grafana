@@ -110,9 +110,7 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
             // Should have awaited until the lang was registered so safe to access kusto?
             try {
               let res  = await datasource.lookupSchema();
-              // the entire schema is returned in one JSON value
-              let parsed = JSON.parse(res[0]);
-              let schema = mapDatasetInfosToSchema(parsed as DatasetFields[])
+              let schema = mapDatasetInfosToSchema(res as DatasetFields[])
 
               const workerAccessor = await (window as any).monaco.languages.kusto.getKustoWorker();
 
