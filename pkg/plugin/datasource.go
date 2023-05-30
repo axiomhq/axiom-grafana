@@ -144,25 +144,27 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 	}
 
 	var frame *data.Frame
+	var newframe *data.Frame
 	if len(result.Result.Buckets.Totals) > 0 {
 		if qm.Totals {
 			frame = buildFrameTotals(&result.Result)
 		} else {
 			frame = buildFrameSeries(&result.Result)
 		}
+		// Only convert longToWide if There is Aggregations
+		newframe, err = data.LongToWide(frame, nil)
+		if err != nil {
+			log.DefaultLogger.Error("transformation from long to wide failed", err.Error())
+		}
 	} else {
 		frame = buildFrameMatches(result)
 	}
 
-	newFrame, err := data.LongToWide(frame, nil)
-	if err != nil {
-		// Provide some more context for the warning in case the error doesn't provide any.
-		log.DefaultLogger.Warn("Failed to convert frame from long to wide format")
-		// if conversion fails, return the original frame
-		newFrame = frame
+	if newframe != nil {
+		response.Frames = append(response.Frames, newframe)
+	} else {
+		response.Frames = append(response.Frames, frame)
 	}
-
-	response.Frames = append(response.Frames, newFrame)
 
 	return response
 }
@@ -175,7 +177,7 @@ func buildFrameSeries(result *axiQuery.Result) *data.Frame {
 		data.NewField("_time", nil, []time.Time{}),
 	}
 
-	for group := range result.Buckets.Totals[0].Group {
+	for _, group := range result.GroupBy {
 		fields = append(fields,
 			data.NewField(group, nil, []string{}),
 		)
@@ -200,6 +202,7 @@ func buildFrameSeries(result *axiQuery.Result) *data.Frame {
 				strV := fmt.Sprintf("%v", v)
 				values = append(values, strV)
 			}
+
 			for _, agg := range g.Aggregations {
 				v := agg.Value
 				switch v := v.(type) {
@@ -209,9 +212,11 @@ func buildFrameSeries(result *axiQuery.Result) *data.Frame {
 					values = append(values, nil)
 				}
 			}
+
 			frame.AppendRow(values...)
 		}
 	}
+
 	return frame
 }
 
@@ -221,7 +226,7 @@ func buildFrameTotals(result *axiQuery.Result) *data.Frame {
 	// define fields
 	var fields []*data.Field
 
-	for group := range result.Buckets.Totals[0].Group {
+	for _, group := range result.GroupBy {
 		fields = append(fields,
 			data.NewField(group, nil, []string{}),
 		)
