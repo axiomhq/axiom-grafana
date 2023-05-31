@@ -268,15 +268,23 @@ func buildFrameMatches(result *AplQueryResponse) *data.Frame {
 		PreferredVisualization: data.VisTypeTable,
 	})
 
+	var fields []*data.Field
+
 	// define fields
 	for _, proj := range result.LegacyRequest.Projections {
 		switch proj.Alias {
 		case "_time", "_sysTime":
-			frame.Fields = append(frame.Fields, data.NewField(proj.Alias, nil, []time.Time{}))
+			fields = append(fields, data.NewField(proj.Alias, nil, []time.Time{}))
 		default:
-			frame.Fields = append(frame.Fields, data.NewField(proj.Alias, nil, []string{}))
+			if strings.Contains(proj.Alias, "\\") {
+				proj.Alias = strings.Replace(proj.Alias, "\\", "", -1)
+			}
+
+			fields = append(fields, data.NewField(proj.Alias, nil, []string{}))
 		}
 	}
+
+	frame.Fields = fields
 
 	for _, match := range result.Matches {
 		// convert structure to map of field values
