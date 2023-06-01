@@ -1,5 +1,10 @@
 # Changelog
 
-## 1.0.0 (Unreleased)
+## 0.1.9 (Beta)
 
-Initial release.
+* Fixes Logo for Axiom with proper background
+* Handle fields with escaped dots
+
+## 0.1.7 (Beta)
+
+* Initial release
