@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -99,6 +100,20 @@ func (d *Datasource) Dispose() {
 // The QueryDataResponse contains a map of RefID to the response for each query, and each response
 // contains Frames ([]*Frame).
 func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
+	// log panic
+	defer func() {
+		if r := recover(); r != nil {
+			var ok bool
+			err, ok := r.(error)
+			if !ok {
+				err = fmt.Errorf("pkg: %v", r)
+				log.DefaultLogger.Error(err.Error())
+			}
+			log.DefaultLogger.Error(err.Error())
+			log.DefaultLogger.Error(string(debug.Stack()))
+		}
+	}()
+
 	// create response struct
 	response := backend.NewQueryDataResponse()
 
@@ -280,7 +295,7 @@ func buildFrameMatches(result *AplQueryResponse) *data.Frame {
 
 	for _, match := range result.Matches {
 		// convert structure to map of field values
-		vals := make(map[string]any)
+		vals := make(map[string]string)
 		walkMatch(match.Data, nil, func(k string, v any) {
 			vals[k] = fmt.Sprintf("%v", v)
 		})
@@ -312,7 +327,7 @@ func walkMatch(m any, path []string, valFunc func(string, any)) {
 				// results returned by Axiom sometimes exist with an empty key at the end
 				walkMatch(v, path, valFunc)
 			} else {
-				walkMatch(v, append(path, k), valFunc)
+				walkMatch(v, append(path, strings.ReplaceAll(k, `.`, `\.`)), valFunc)
 			}
 		}
 	default:
