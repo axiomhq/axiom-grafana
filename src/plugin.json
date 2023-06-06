@@ -37,12 +37,24 @@
     ],
     "screenshots": [
       {
-        "name": "Dashboard",
-        "path": "img/axiom-aws-lambda-dashboard.png"
+        "name": "Configuration",
+        "path": "img/axiom-grafana-configuration.jpg"
       },
       {
-        "name": "DatasourceConfiguration",
-        "path": "img/datasource-configuration.png"
+        "name": "Explore",
+        "path": "img/axiom-grafana-explore.jpg"
+      },
+      {
+        "name": "Panel",
+        "path": "img/axiom-grafana-panel-configuration.jpg"
+      },
+      {
+        "name": "Dashboard",
+        "path": "img/axiom-grafana-dashboard.jpg"
+      },
+      {
+        "name": "Alerting",
+        "path": "img/axiom-grafana-alerting.jpg"
       }
     ],
     "version": "%VERSION%",
