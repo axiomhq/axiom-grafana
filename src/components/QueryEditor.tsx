@@ -57,6 +57,11 @@ if (isClientSide) {
 type Props = QueryEditorProps<DataSource, AxiomQuery, AxiomDataSourceOptions>;
 
 export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) {
+  // We need to use a ref for the totals because the function that is called on
+  // Cmd/Ctrl+Enter only has access to a reference of the first render because
+  // it runs when Monaco is initialized.
+  const totals = React.useRef(query.totals);
+
   const [queryStr, setQueryStr] = React.useState('');
   const { apl: queryText } = query;
 
@@ -66,6 +71,7 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
   };
 
   const onTotalsChange = (e: FormEvent<HTMLInputElement>) => {
+    totals.current = e.currentTarget.checked;
     onChange({
       ...query,
       totals: e.currentTarget.checked,
@@ -126,7 +132,9 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
               label: 'Submit query',
               keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
               run: async function (ed) {
-                onQueryTextChange(ed.getValue());
+                const apl = ed.getValue();
+                onChange({ ...query, apl, totals: totals.current });
+                setQueryStr(apl);
                 onRunQuery();
               },
             });
