@@ -132,7 +132,9 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
               label: 'Submit query',
               keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
               run: async function (ed) {
-                onChange({ ...query, apl: ed.getValue(), totals: totals.current });
+                const apl = ed.getValue();
+                onChange({ ...query, apl, totals: totals.current });
+                setQueryStr(apl);
                 onRunQuery();
               },
             });
