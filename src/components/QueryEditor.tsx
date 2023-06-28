@@ -9,6 +9,8 @@ const workersAssets = require('@axiomhq/axiom-frontend-workers');
 
 const isClientSide = typeof window !== 'undefined';
 
+const placeholder = '// Enter an APL query (run with Ctrl/Cmd+Enter)';
+
 const getWorker = (_: string, label: string) => {
   let targetLabel = label;
 
@@ -70,7 +72,19 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
     });
   };
 
-  
+  const addPlaceholder = (editor: any, monaco: any) => {
+    editor.executeEdits(null, [{ range: new monaco.Range(1, 1, 1, 1), text: placeholder }]);
+    editor.onDidFocusEditorText(() => {
+      if (editor.getValue() === placeholder) {
+        editor.executeEdits(null, [{ range: new monaco.Range(1, 1, placeholder.length, 1), text: '' }]);
+      }
+    });
+    editor.onDidBlurEditorText(() => {
+      if (editor.getValue() === '') {
+        editor.executeEdits(null, [{ range: new monaco.Range(1, 1, 1, 1), text: placeholder }]);
+      }
+    });
+  };
 
   return (
     <FieldSet>
@@ -90,9 +104,9 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
               // If the kusto language is already registered, we can proceed immediately
               setTimeout(() => {
                 // using timeout to  ensure the editor is fully loaded and we can have syntax highlighting on initial render
-                setQueryStr(queryText)
-              }, 200)
-              
+                setQueryStr(queryText);
+                addPlaceholder(editor, monaco);
+              }, 200);
             } else {
               // If the kusto language isn't registered, we need to wait for it to finish loading
               await new Promise((resolve) => {
@@ -100,17 +114,27 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
                   disposable.dispose();
                   resolve(undefined);
                   setTimeout(() => {
-                    setQueryStr(queryText)
-                  }, 200)
-                  
+                    setQueryStr(queryText);
+                    addPlaceholder(editor, monaco);
+                  }, 200);
                 });
               });
             }
 
+            editor.addAction({
+              id: 'submit-query',
+              label: 'Submit query',
+              keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+              run: async function (ed) {
+                onQueryTextChange(ed.getValue());
+                onRunQuery();
+              },
+            });
+
             // Should have awaited until the lang was registered so safe to access kusto?
             try {
-              let res  = await datasource.lookupSchema();
-              let schema = mapDatasetInfosToSchema(res as DatasetFields[])
+              let res = await datasource.lookupSchema();
+              let schema = mapDatasetInfosToSchema(res as DatasetFields[]);
 
               const workerAccessor = await (window as any).monaco.languages.kusto.getKustoWorker();
 
@@ -118,16 +142,15 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
               if (model && model.uri) {
                 const worker = await workerAccessor(model.uri);
                 worker.setSchemaFromShowSchema(
-                    schema,
-                    JSON.stringify(schema), // Not really sure what to put here - it's the database connection string
-                    'db', // Should be the name of the database in the schema
-                    []
+                  schema,
+                  JSON.stringify(schema), // Not really sure what to put here - it's the database connection string
+                  'db', // Should be the name of the database in the schema
+                  []
                 );
               }
             } catch (e) {
               console.warn(e);
             }
-
           }}
         />
       </Field>
