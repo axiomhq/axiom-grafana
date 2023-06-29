@@ -1,9 +1,4 @@
-import {
-  DataFrame,
-  DataQueryRequest,
-  DataQueryResponse,
-  DataSourceInstanceSettings,
-} from '@grafana/data';
+import { DataFrame, DataQueryRequest, DataQueryResponse, DataSourceInstanceSettings } from '@grafana/data';
 import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
 
 import { AxiomQuery, AxiomDataSourceOptions } from './types';
@@ -55,4 +50,7 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
     return this.getResource('/schema-lookup');
   }
 
+  getQueryDisplayText(query: AxiomQuery) {
+    return query.apl;
+  }
 }

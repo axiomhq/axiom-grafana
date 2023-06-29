@@ -65,6 +65,12 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
   const [queryStr, setQueryStr] = React.useState('');
   const { apl: queryText } = query;
 
+  if (query.apl !== queryStr) {
+    // query.apl could've changed from the outside (e.g. when a history query
+    // is ran), so we need to update the state.
+    setQueryStr(query.apl);
+  }
+
   const onQueryTextChange = (apl: string) => {
     onChange({ ...query, apl });
     setQueryStr(apl);
@@ -79,7 +85,9 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
   };
 
   const addPlaceholder = (editor: any, monaco: any) => {
-    editor.executeEdits(null, [{ range: new monaco.Range(1, 1, 1, 1), text: placeholder }]);
+    if (editor.getValue() === '') {
+      editor.executeEdits(null, [{ range: new monaco.Range(1, 1, 1, 1), text: placeholder }]);
+    }
     editor.onDidFocusEditorText(() => {
       if (editor.getValue() === placeholder) {
         editor.executeEdits(null, [{ range: new monaco.Range(1, 1, placeholder.length, 1), text: '' }]);
