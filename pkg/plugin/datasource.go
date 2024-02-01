@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/axiomhq/axiom-go/axiom"
@@ -117,14 +118,54 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 	// create response struct
 	response := backend.NewQueryDataResponse()
 
-	// loop over queries and execute them individually.
-	for _, q := range req.Queries {
-		res := d.query(ctx, d.apiHost, req.PluginContext, q)
-
-		// save the response in a hashmap
-		// based on with RefID as identifier
-		response.Responses[q.RefID] = res
+	type Job struct {
+		query backend.DataQuery
 	}
+
+	type JobResponse struct {
+		refID    string
+		response backend.DataResponse
+	}
+
+	concurrencyLimit := 10 // limit to 10 concurrent requests
+
+	jobCh := make(chan Job)
+	responseCh := make(chan JobResponse)
+	var wg sync.WaitGroup
+
+	processJobsWorker := func() {
+		for job := range jobCh {
+			res := d.query(ctx, d.apiHost, req.PluginContext, job.query)
+			responseCh <- JobResponse{
+				refID:    job.query.RefID,
+				response: res,
+			}
+		}
+	}
+
+	for i := 0; i < concurrencyLimit; i++ {
+		go processJobsWorker()
+	}
+
+	go func() {
+		for res := range responseCh {
+			// save the response in a hashmap
+			// based on with RefID as identifier
+			response.Responses[res.refID] = res.response
+			wg.Done()
+		}
+	}()
+
+	for _, q := range req.Queries {
+		wg.Add(1)
+		jobCh <- Job{query: q}
+	}
+
+	// Wait for all queries to complete and then close the
+	// channels so that all goroutines exit
+	wg.Wait()
+	close(responseCh)
+	close(jobCh)
 
 	return response, nil
 }
