@@ -3,9 +3,11 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"testing"
+
 	"github.com/axiomhq/axiom-go/axiom/query"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
-	"testing"
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 )
@@ -17,17 +19,19 @@ func TestQueryData(t *testing.T) {
 		context.Background(),
 		&backend.QueryDataRequest{
 			Queries: []backend.DataQuery{
-				{RefID: "A"},
+				{RefID: "A", JSON: json.RawMessage(`{}`)},
+				{RefID: "B", JSON: json.RawMessage(`{}`)},
+				{RefID: "C", JSON: json.RawMessage(`{}`)},
 			},
 		},
 	)
-	if err != nil {
-		t.Error(err)
+	require.NoError(t, err)
+
+	for _, res := range resp.Responses {
+		require.NoError(t, res.Error)
 	}
 
-	if len(resp.Responses) != 1 {
-		t.Fatal("QueryData must return a response")
-	}
+	require.Len(t, resp.Responses, 3, "QueryData must return a response for each query")
 }
 
 func TestBuildFrame(t *testing.T) {
@@ -47,14 +51,10 @@ func TestBuildFrame(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			var queryRes query.Result
 			err := json.Unmarshal([]byte(test.aplResponse), &queryRes)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			var f any
 			err = json.Unmarshal([]byte(test.aplResponse), &f)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			grpByArr := f.(map[string]any)["request"].(map[string]any)["groupBy"].([]any)
 			queryResGrpBy := make([]string, 0, len(grpByArr))
