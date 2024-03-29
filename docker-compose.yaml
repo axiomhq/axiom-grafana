@@ -3,7 +3,7 @@ version: '3.0'
 services:
   grafana:
     user: root
-    container_name: 'org-testingplugin-datasource'
+    container_name: 'axiom-axiomgrafana-datasource'
 
     # platform: 'linux/amd64'
     build:
