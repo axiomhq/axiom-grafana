@@ -5,7 +5,7 @@ services:
     user: root
     container_name: 'axiom-axiomgrafana-datasource'
 
-    # platform: 'linux/amd64'
+    platform: 'linux/amd64'
     build:
       context: ./.config
       args:
