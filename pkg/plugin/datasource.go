@@ -31,7 +31,7 @@ var (
 )
 
 // NewDatasource creates a new datasource instance.
-func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+func NewDatasource(settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
 	accessToken := ""
 	if token, exists := settings.DecryptedSecureJSONData["accessToken"]; exists {
 		// Use the decrypted API key.
@@ -397,7 +397,7 @@ func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRe
 	// validate that we get HTTP 400, this gives high confidence
 	// that we got past network and authentication issues and looked at our request
 	// it also should be somewhat inexpensive for the server
-	var axiErr *axiom.HTTPError
+	var axiErr *axiom.Error
 	var msg = "Did not receive expected error"
 	_, err = d.client.Query(ctx, "")
 	if err != nil && errors.As(err, &axiErr) {
