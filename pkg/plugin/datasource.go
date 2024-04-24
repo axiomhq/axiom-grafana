@@ -38,12 +38,9 @@ func NewDatasource(settings backend.DataSourceInstanceSettings) (instancemgmt.In
 		accessToken = token
 	}
 
-	// TODO: Commenting this out since we can't use a personal token for provisioning,
-	// so we have to allow usage of api tokens
-	// note: provisioning is used for the submit process for new plugin releases
-	// if !IsPersonalToken(accessToken) {
-	// 	return nil, fmt.Errorf("personal token required")
-	// }
+	if !IsPersonalToken(accessToken) {
+		return nil, fmt.Errorf("personal token required")
+	}
 
 	var data map[string]string
 	err := json.Unmarshal(settings.JSONData, &data)
