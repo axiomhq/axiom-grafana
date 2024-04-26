@@ -11,5 +11,4 @@ datasources:
     jsonData:
       path: '/resources'
       orgID: 'axiom-play-qf1k'
-    secureJsonData: 
-      accessToken: 'set-your-access-token'
+

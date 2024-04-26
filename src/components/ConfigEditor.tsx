@@ -53,13 +53,7 @@ export function ConfigEditor(props: Props) {
 
   return (
     <div className="gf-form-group">
-      <Label
-        description={
-          <span>
-            Create a Personal Token from your Axiom account settings.
-          </span>
-        }
-      >
+      <Label description={<span>Create a Personal Token from your Axiom account settings.</span>}>
         <h5>Authentication</h5>
       </Label>
       <InlineField label="Personal Token" labelWidth={17}>
@@ -74,31 +68,22 @@ export function ConfigEditor(props: Props) {
       </InlineField>
       <br />
       <InlineField label="Org ID" labelWidth={17}>
-        <Input
-            value={jsonData.orgID || ''}
-            placeholder=""
-            width={40}
-            onChange={onOrgIDChange}
-        />
+        <Input value={jsonData.orgID || ''} placeholder="" width={40} onChange={onOrgIDChange} />
       </InlineField>
       <br />
-      { window.location.hostname === 'localhost' || window.location.hostname.endsWith('axiomtestlabs.co') ? (
-        <div>
-          <Label description="The Axiom host to use. Leave the default value if you are not using a self-hosted Axiom instance.">
-            <h6>Axiom Host</h6>
-          </Label>
-          <InlineField label="URL" labelWidth={17}>
-            <Input
-              onChange={onHostChange}
-              value={jsonData.apiHost || 'https://api.axiom.co'}
-              placeholder="axiom host"
-              width={40}
-            />
-          </InlineField>
-        </div>
-      ) : (
-        ''
-      )}
+      <div>
+        <Label description="The Axiom host to use.">
+          <h6>Axiom Host</h6>
+        </Label>
+        <InlineField label="URL" labelWidth={17}>
+          <Input
+            onChange={onHostChange}
+            value={jsonData.apiHost || 'https://api.axiom.co'}
+            placeholder="Axiom API host URL"
+            width={40}
+          />
+        </InlineField>
+      </div>
     </div>
   );
 }
