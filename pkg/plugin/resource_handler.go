@@ -3,8 +3,9 @@ package plugin
 import (
 	"context"
 	"encoding/json"
-	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"net/http"
+
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/resource/httpadapter"

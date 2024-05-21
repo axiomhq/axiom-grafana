@@ -17,7 +17,6 @@ export const DEFAULT_QUERY: Partial<AxiomQuery> = {
  */
 export interface AxiomDataSourceOptions extends DataSourceJsonData {
   apiHost: string;
-  orgID: string;
 }
 
 /**
