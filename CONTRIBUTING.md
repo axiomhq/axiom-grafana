@@ -7,8 +7,8 @@ Contributions are welcome! Please submit pull requests or open issues on the [Gi
 ## Building and Running Via Source (for Dev/Local)
 
 ```shell
-$ yarn install
-$ yarn dev
+$ npm install
+$ npm run dev
 ```
 
 In another shell run the following
