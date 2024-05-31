@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0
+
+### Breaking Changes
+
+- Removed support for personal tokens, now only supports organization tokens by @schehata (#59)
+
 ## 0.3.1
 
 - Show the URL config field in plugin settings by @schehata in #58
