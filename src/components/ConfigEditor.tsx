@@ -52,7 +52,7 @@ export function ConfigEditor(props: Props) {
         <SecretInput
           isConfigured={(secureJsonFields && secureJsonFields.accessToken) as boolean}
           value={secureJsonData.accessToken || ''}
-          placeholder="xapt-***********"
+          placeholder="xaat-***********"
           width={40}
           onReset={onResetAccessToken}
           onChange={onAccessTokenChange}

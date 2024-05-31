@@ -51,6 +51,7 @@ func NewDatasource(_ context.Context, settings backend.DataSourceInstanceSetting
 	client, err := axiom.NewClient(
 		axiom.SetToken(accessToken),
 		axiom.SetURL(host),
+		axiom.SetUserAgent(fmt.Sprintf("axiom-grafana/v%s", Version)),
 	)
 	if err != nil {
 		return nil, err
@@ -64,11 +65,6 @@ func NewDatasource(_ context.Context, settings backend.DataSourceInstanceSetting
 	ds.CallResourceHandler = resourceHandler
 
 	return ds, nil
-}
-
-// IsPersonalToken returns true if the given token is a personal token.
-func IsPersonalToken(token string) bool {
-	return strings.HasPrefix(token, "xapt-")
 }
 
 // Datasource is an example datasource which can respond to data queries, reports
