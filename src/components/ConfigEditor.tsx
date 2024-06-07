@@ -39,6 +39,14 @@ export function ConfigEditor(props: Props) {
     });
   };
 
+  const onOrgIDChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const jsonData = {
+      ...options.jsonData,
+      orgID: event.target.value,
+    };
+    onOptionsChange({ ...options, jsonData });
+  };
+
   const { secureJsonFields } = options;
   const jsonData = (options.jsonData || {}) as AxiomDataSourceOptions;
   const secureJsonData = (options.secureJsonData || {}) as MySecureJsonData;
@@ -59,6 +67,12 @@ export function ConfigEditor(props: Props) {
         />
       </InlineField>
       <br />
+      {/* Only show orgId for users who have already set it. Promote advanced tokens instead */}
+      {jsonData.orgID && (
+        <InlineField label="Org ID" labelWidth={17}>
+          <Input value={jsonData.orgID || ''} placeholder="" width={40} onChange={onOrgIDChange} />
+        </InlineField>
+      )}
       <div>
         <Label description="The Axiom host to use.">
           <h6>Axiom Host</h6>

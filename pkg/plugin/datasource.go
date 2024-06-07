@@ -48,9 +48,12 @@ func NewDatasource(_ context.Context, settings backend.DataSourceInstanceSetting
 		host = apiHost
 	}
 
+	orgID := data["orgID"]
+
 	client, err := axiom.NewClient(
 		axiom.SetToken(accessToken),
 		axiom.SetURL(host),
+		axiom.SetOrganizationID(orgID),
 		axiom.SetUserAgent(fmt.Sprintf("axiom-grafana/v%s", Version)),
 	)
 	if err != nil {
