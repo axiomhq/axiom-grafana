@@ -7,13 +7,13 @@ The Grafana data source plugin is the easiest way to query event data from Axiom
 This plugin has the following requirements:
 
 - An Axiom account
-- An Axiom [advanced API token with read permission](https://axiom.co/docs/reference/settings/api-tokens)
+- An Axiom [advanced API token with read permission](https://axiom.co/docs/reference/tokens#api-tokens)
 
 ## Configuration
 
 1. Add a new data source in Grafana
 2. Select the Axiom data source plugin
-3. Enter your Axiom personal access token and organization ID
+3. Enter your Axiom advanced API token
 4. Save and test the data source
 
 ## Visualizing data

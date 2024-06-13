@@ -1,5 +1,5 @@
-import React, { ChangeEvent } from 'react';
-import { InlineField, SecretInput, Input, Label } from '@grafana/ui';
+import React, { ChangeEvent, useState } from 'react';
+import { InlineField, SecretInput, Input, Label, Alert } from '@grafana/ui';
 import { DataSourcePluginOptionsEditorProps } from '@grafana/data';
 import { AxiomDataSourceOptions, MySecureJsonData } from '../types';
 
@@ -7,6 +7,10 @@ interface Props extends DataSourcePluginOptionsEditorProps<AxiomDataSourceOption
 
 export function ConfigEditor(props: Props) {
   const { onOptionsChange, options } = props;
+  const [shouldShowOrgId, setShowOrgId] = useState(
+    !!options.jsonData.orgID && options.secureJsonData?.accessToken.startsWith('xapt-')
+  );
+
   const onHostChange = (event: ChangeEvent<HTMLInputElement>) => {
     const jsonData = {
       ...options.jsonData,
@@ -17,6 +21,12 @@ export function ConfigEditor(props: Props) {
 
   // Secure field (only sent to the backend)
   const onAccessTokenChange = (event: ChangeEvent<HTMLInputElement>) => {
+    if (event.target.value.startsWith('xapt-')) {
+      setShowOrgId(true);
+    } else {
+      setShowOrgId(false);
+    }
+
     onOptionsChange({
       ...options,
       secureJsonData: {
@@ -53,10 +63,10 @@ export function ConfigEditor(props: Props) {
 
   return (
     <div className="gf-form-group">
-      <Label description={<span>Create a Personal Token from your Axiom account settings.</span>}>
+      <Label description={<span>Create an API Token from your Axiom account settings.</span>}>
         <h5>Authentication</h5>
       </Label>
-      <InlineField label="Personal Token" labelWidth={17}>
+      <InlineField label="API Token" labelWidth={17}>
         <SecretInput
           isConfigured={(secureJsonFields && secureJsonFields.accessToken) as boolean}
           value={secureJsonData.accessToken || ''}
@@ -68,10 +78,22 @@ export function ConfigEditor(props: Props) {
       </InlineField>
       <br />
       {/* Only show orgId for users who have already set it. Promote advanced tokens instead */}
-      {jsonData.orgID && (
+      {shouldShowOrgId && (
         <InlineField label="Org ID" labelWidth={17}>
           <Input value={jsonData.orgID || ''} placeholder="" width={40} onChange={onOrgIDChange} />
         </InlineField>
+      )}
+      {/* If orgId is set, show a deprecation message */}
+      {shouldShowOrgId && (
+        <div>
+          <Alert
+            title="Personal tokens are deprecated and will be removed in the next release. Please switch to advanced API tokens."
+            about="Token"
+            severity="warning"
+            buttonContent="Learn more"
+            topSpacing={4}
+          />
+        </div>
       )}
       <div>
         <Label description="The Axiom host to use.">
