@@ -2,9 +2,9 @@
 
 ## 0.4.0
 
-### Breaking Changes
-
-- Removed support for personal tokens, now only supports organization tokens by @schehata (#59)
+- Added support for advanced API tokens by @schehata (#59)
+- Deprecate usage of Personal Tokens by @schehata (#59)
+- Upgraded axiom-go to version v0.17.8
 
 ## 0.3.1
 
