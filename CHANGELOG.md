@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0
+
+- Added support for advanced API tokens by @schehata (#59)
+- Deprecate usage of Personal Tokens by @schehata (#59)
+- Upgraded axiom-go to version v0.17.8
+
 ## 0.3.1
 
 - Show the URL config field in plugin settings by @schehata in #58

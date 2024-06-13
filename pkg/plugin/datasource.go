@@ -31,15 +31,11 @@ var (
 )
 
 // NewDatasource creates a new datasource instance.
-func NewDatasource(settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+func NewDatasource(_ context.Context, settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
 	accessToken := ""
 	if token, exists := settings.DecryptedSecureJSONData["accessToken"]; exists {
 		// Use the decrypted API key.
 		accessToken = token
-	}
-
-	if !IsPersonalToken(accessToken) {
-		return nil, fmt.Errorf("personal token required")
 	}
 
 	var data map[string]string
@@ -52,15 +48,13 @@ func NewDatasource(settings backend.DataSourceInstanceSettings) (instancemgmt.In
 		host = apiHost
 	}
 
-	orgID, hasOrgID := data["orgID"]
-	if !hasOrgID && len(orgID) > 0 {
-		return nil, fmt.Errorf("orgID is required")
-	}
+	orgID := data["orgID"]
 
 	client, err := axiom.NewClient(
 		axiom.SetToken(accessToken),
 		axiom.SetURL(host),
 		axiom.SetOrganizationID(orgID),
+		axiom.SetUserAgent(fmt.Sprintf("axiom-grafana/v%s", Version)),
 	)
 	if err != nil {
 		return nil, err
@@ -74,11 +68,6 @@ func NewDatasource(settings backend.DataSourceInstanceSettings) (instancemgmt.In
 	ds.CallResourceHandler = resourceHandler
 
 	return ds, nil
-}
-
-// IsPersonalToken returns true if the given token is a personal token.
-func IsPersonalToken(token string) bool {
-	return strings.HasPrefix(token, "xapt-")
 }
 
 // Datasource is an example datasource which can respond to data queries, reports
@@ -397,7 +386,7 @@ func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRe
 	// validate that we get HTTP 400, this gives high confidence
 	// that we got past network and authentication issues and looked at our request
 	// it also should be somewhat inexpensive for the server
-	var axiErr *axiom.Error
+	var axiErr axiom.HTTPError
 	var msg = "Did not receive expected error"
 	_, err = d.client.Query(ctx, "")
 	if err != nil && errors.As(err, &axiErr) {

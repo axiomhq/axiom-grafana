@@ -10,5 +10,4 @@ datasources:
     editable: true
     jsonData:
       path: '/resources'
-      orgID: 'axiom-play-qf1k'
 
