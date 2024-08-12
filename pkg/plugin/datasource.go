@@ -190,11 +190,13 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 
 	var frame *data.Frame
 	var newframe *data.Frame
-	if len(result.Result.Buckets.Totals) > 0 {
+	log.DefaultLogger.Info("totals", qm.Totals)
+	log.DefaultLogger.Info("buckets", result.Tables[0].Buckets.Size)
+	if len(result.Tables) > 0 {
 		if qm.Totals {
-			frame = buildFrameTotals(&result.Result)
+			frame = buildFrameSeries(&result.Tables[1])
 		} else {
-			frame = buildFrameSeries(&result.Result)
+			frame = buildFrameSeries(&result.Tables[0])
 		}
 		// Only convert longToWide if There is Aggregations
 		newframe, err = data.LongToWide(frame, nil)
@@ -202,7 +204,8 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 			log.DefaultLogger.Error("transformation from long to wide failed", err.Error())
 		}
 	} else {
-		frame = buildFrameMatches(result)
+		log.DefaultLogger.Info("buildFrameSeries for Matches")
+		frame = buildFrameSeries(&result.Tables[0])
 	}
 
 	if newframe != nil {
@@ -214,135 +217,57 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 	return response
 }
 
-func buildFrameSeries(result *axiQuery.Result) *data.Frame {
+func buildFrameSeries(result *axiQuery.Table) *data.Frame {
 	frame := data.NewFrame("response")
 
 	// define fields
-	fields := []*data.Field{
-		data.NewField("_time", nil, []time.Time{}),
-	}
+	fields := []*data.Field{}
 
-	for _, group := range result.GroupBy {
-		fields = append(fields,
-			data.NewField(group, nil, []string{}),
-		)
-	}
-
-	for _, agg := range result.Buckets.Totals[0].Aggregations {
-		fields = append(fields,
-			data.NewField(agg.Alias, nil, []*float64{}),
-		)
-	}
-
-	frame.Fields = fields
-
-	// FIXME: This is a hack
-	for _, series := range result.Buckets.Series {
-		for _, g := range series.Groups {
-			values := make([]any, 0, 1+len(g.Group)+len(g.Aggregations)) // +1 for time
-			values = append(values, series.StartTime)
-			for _, field := range result.GroupBy {
-				v := g.Group[field]
-				// convert v to string regardless of type
-				strV := fmt.Sprintf("%v", v)
-				values = append(values, strV)
-			}
-
-			for _, agg := range g.Aggregations {
-				v := agg.Value
-				switch v := v.(type) {
-				case float64:
-					values = append(values, &v)
-				default:
-					values = append(values, nil)
-				}
-			}
-
-			frame.AppendRow(values...)
-		}
-	}
-
-	return frame
-}
-
-func buildFrameTotals(result *axiQuery.Result) *data.Frame {
-	frame := data.NewFrame("response")
-
-	// define fields
-	var fields []*data.Field
-
-	for _, group := range result.GroupBy {
-		fields = append(fields,
-			data.NewField(group, nil, []string{}),
-		)
-	}
-
-	for _, agg := range result.Buckets.Totals[0].Aggregations {
-		fields = append(fields,
-			data.NewField(agg.Alias, nil, []*float64{}),
-		)
-	}
-
-	frame.Fields = fields
-
-	for _, g := range result.Buckets.Totals {
-		values := make([]any, 0, len(g.Group)+len(g.Aggregations))
-		for _, field := range result.GroupBy {
-			v := g.Group[field]
-			// convert v to string regardless of type
-			strV := fmt.Sprintf("%v", v)
-			values = append(values, strV)
-		}
-		for _, agg := range g.Aggregations {
-			v := agg.Value
-			switch v := v.(type) {
-			case float64:
-				values = append(values, &v)
-			default:
-				values = append(values, nil)
-			}
-		}
-		frame.AppendRow(values...)
-	}
-
-	return frame
-}
-
-func buildFrameMatches(result *AplQueryResponse) *data.Frame {
-	frame := data.NewFrame("response").SetMeta(&data.FrameMeta{
-		PreferredVisualization: data.VisTypeTable,
-	})
-
-	// define fields
-	for _, proj := range result.LegacyRequest.Projections {
-		switch proj.Alias {
-		case "_time", "_sysTime":
-			frame.Fields = append(frame.Fields, data.NewField(proj.Alias, nil, []time.Time{}))
+	for _, f := range result.Fields {
+		var field *data.Field
+		switch f.Type {
+		case axiQuery.TypeDateTime:
+			field = data.NewField(f.Name, nil, []time.Time{})
+			break
+		case axiQuery.TypeLong, axiQuery.TypeInt:
+			field = data.NewField(f.Name, nil, []float64{})
+			break
+		case axiQuery.TypeBool:
+			field = data.NewField(f.Name, nil, []bool{})
+			break
+		case axiQuery.TypeTimespan:
+			field = data.NewField(f.Name, nil, []int64{})
+			break
 		default:
-			frame.Fields = append(frame.Fields, data.NewField(proj.Alias, nil, []string{}))
+			field = data.NewField(f.Name, nil, []string{})
 		}
+
+		fields = append(fields, field)
 	}
 
-	for _, match := range result.Matches {
-		// convert structure to map of field values
-		vals := make(map[string]string)
-		walkMatch(match.Data, nil, func(k string, v any) {
-			vals[k] = fmt.Sprintf("%v", v)
-		})
+	frame.Fields = fields
 
-		// build values
-		values := make([]any, 0, len(frame.Fields))
-		for _, field := range frame.Fields {
-			switch field.Name {
-			case "_time":
-				values = append(values, match.Time)
-			case "_sysTime":
-				values = append(values, match.SysTime)
+	for i := 0; i < len(result.Columns[0]); i++ {
+		values := make([]any, 0, len(result.Fields))
+		for colIndex, col := range result.Columns {
+			switch result.Fields[colIndex].Type {
+			case axiQuery.TypeDateTime:
+				// parse time
+				t, err := time.Parse(time.RFC3339, col[i].(string))
+				if err != nil {
+					log.DefaultLogger.Warn("Failed to parse time", "time", col[i])
+					values = append(values, "")
+					continue
+				}
+				values = append(values, t)
+			case axiQuery.TypeInt:
+				values = append(values, col[i])
+			case axiQuery.TypeLong:
+				values = append(values, col[i])
 			default:
-				values = append(values, vals[field.Name])
+				values = append(values, fmt.Sprintf("%v", col[i]))
 			}
 		}
-
 		frame.AppendRow(values...)
 	}
 
