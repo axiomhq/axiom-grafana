@@ -158,6 +158,10 @@ const config = async (env): Promise<Configuration> => {
           { from: 'libs/**/*', to: '.', noErrorOnMissing: true }, // Optional
           { from: 'static/**/*', to: '.', noErrorOnMissing: true }, // Optional
           { from: '**/query_help.md', to: '.', noErrorOnMissing: true }, // Optional
+          {
+            from: '../node_modules/@axiomhq/axiom-frontend-workers/dist',
+            to: './workers',
+          },
         ],
       }),
       // Replace certain template-variables in the README and plugin.json
