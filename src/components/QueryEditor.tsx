@@ -16,9 +16,9 @@ const getWorker = (_: string, label: string) => {
 
   // We don't control the moduleId monaco uses to request the editor worker. If it looks like the editor worker is being requested just use "editor".
   if (targetLabel.includes('editor')) {
-    targetLabel = 'editor.e59cb646';
+    targetLabel = 'editor.4a133207';
   } else {
-    targetLabel = 'kusto.e59cb646';
+    targetLabel = 'kusto.4a133207';
   }
 
   const filename = `${targetLabel}.js`;
