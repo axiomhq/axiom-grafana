@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"runtime/debug"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/axiomhq/axiom-go/axiom"
@@ -16,6 +15,7 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
+	"github.com/grafana/grafana-plugin-sdk-go/experimental/concurrent"
 )
 
 // Make sure Datasource implements required interfaces. This is important to do
@@ -85,6 +85,11 @@ func (d *Datasource) Dispose() {
 	// Clean up datasource instance resources.
 }
 
+func (d *Datasource) handleSingleQueryData(ctx context.Context, q concurrent.Query) backend.DataResponse {
+	// res := backend.NewQueryDataResponse()
+	return d.query(ctx, d.apiHost, q)
+}
+
 // QueryData handles multiple queries and returns multiple responses.
 // req contains the queries []DataQuery (where each query contains RefID as a unique identifier).
 // The QueryDataResponse contains a map of RefID to the response for each query, and each response
@@ -104,59 +109,7 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 		}
 	}()
 
-	// create response struct
-	response := backend.NewQueryDataResponse()
-
-	type Job struct {
-		query backend.DataQuery
-	}
-
-	type JobResponse struct {
-		refID    string
-		response backend.DataResponse
-	}
-
-	concurrencyLimit := 10 // limit to 10 concurrent requests
-
-	jobCh := make(chan Job)
-	responseCh := make(chan JobResponse)
-	var wg sync.WaitGroup
-
-	processJobsWorker := func() {
-		for job := range jobCh {
-			res := d.query(ctx, d.apiHost, req.PluginContext, job.query)
-			responseCh <- JobResponse{
-				refID:    job.query.RefID,
-				response: res,
-			}
-		}
-	}
-
-	for i := 0; i < concurrencyLimit; i++ {
-		go processJobsWorker()
-	}
-
-	go func() {
-		for res := range responseCh {
-			// save the response in a hashmap
-			// based on with RefID as identifier
-			response.Responses[res.refID] = res.response
-			wg.Done()
-		}
-	}()
-
-	for _, q := range req.Queries {
-		wg.Add(1)
-		jobCh <- Job{query: q}
-	}
-
-	// Wait for all queries to complete and then close the
-	// channels so that all goroutines exit
-	wg.Wait()
-	close(responseCh)
-	close(jobCh)
-
-	return response, nil
+	return concurrent.QueryData(ctx, req, d.handleSingleQueryData, 10)
 }
 
 type queryModel struct {
@@ -164,14 +117,14 @@ type queryModel struct {
 	Totals bool   `json:"totals"`
 }
 
-func (d *Datasource) query(ctx context.Context, host string, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
+func (d *Datasource) query(ctx context.Context, host string, query concurrent.Query) backend.DataResponse {
 
 	var response backend.DataResponse
 
 	// Unmarshal the JSON into our queryModel.
 	var qm queryModel
 
-	err := json.Unmarshal(query.JSON, &qm)
+	err := json.Unmarshal(query.DataQuery.JSON, &qm)
 	if err != nil {
 		// Log the actual error since it will be included in the Grafana server log and return a more generic message to the end user.
 		log.DefaultLogger.Error(err.Error())
@@ -183,7 +136,7 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 	}
 
 	// make request to axiom
-	result, err := d.QueryOverride(ctx, qm.APL, axiQuery.SetStartTime(query.TimeRange.From), axiQuery.SetEndTime(query.TimeRange.To))
+	result, err := d.QueryOverride(ctx, qm.APL, axiQuery.SetStartTime(query.DataQuery.TimeRange.From), axiQuery.SetEndTime(query.DataQuery.TimeRange.To))
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("axiom error: %v", err.Error()))
 	}
