@@ -31,7 +31,8 @@ var (
 )
 
 // NewDatasource creates a new datasource instance.
-func NewDatasource(_ context.Context, settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+	logger := log.DefaultLogger.FromContext(ctx)
 	accessToken := ""
 	if token, exists := settings.DecryptedSecureJSONData["accessToken"]; exists {
 		// Use the decrypted API key.
@@ -41,6 +42,7 @@ func NewDatasource(_ context.Context, settings backend.DataSourceInstanceSetting
 	var data map[string]string
 	err := json.Unmarshal(settings.JSONData, &data)
 	if err != nil {
+		logger.Error("failed to unmarshal settings", "error", err)
 		return nil, err
 	}
 	host := "https://api.axiom.co"
@@ -57,6 +59,7 @@ func NewDatasource(_ context.Context, settings backend.DataSourceInstanceSetting
 		axiom.SetUserAgent(fmt.Sprintf("axiom-grafana/v%s", Version)),
 	)
 	if err != nil {
+		logger.Error("failed to create axiom client", "error", err)
 		return nil, err
 	}
 
@@ -66,6 +69,8 @@ func NewDatasource(_ context.Context, settings backend.DataSourceInstanceSetting
 	}
 	resourceHandler := ds.newResourceHandler()
 	ds.CallResourceHandler = resourceHandler
+
+	logger.Info("datasource & client created", "host", host)
 
 	return ds, nil
 }
@@ -83,11 +88,6 @@ type Datasource struct {
 // be disposed and a new one will be created using NewSampleDatasource factory function.
 func (d *Datasource) Dispose() {
 	// Clean up datasource instance resources.
-}
-
-func (d *Datasource) handleSingleQueryData(ctx context.Context, q concurrent.Query) backend.DataResponse {
-	// res := backend.NewQueryDataResponse()
-	return d.query(ctx, d.apiHost, q)
 }
 
 // QueryData handles multiple queries and returns multiple responses.
@@ -109,7 +109,7 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 		}
 	}()
 
-	return concurrent.QueryData(ctx, req, d.handleSingleQueryData, 10)
+	return concurrent.QueryData(ctx, req, d.query, 10)
 }
 
 type queryModel struct {
@@ -117,8 +117,8 @@ type queryModel struct {
 	Totals bool   `json:"totals"`
 }
 
-func (d *Datasource) query(ctx context.Context, host string, query concurrent.Query) backend.DataResponse {
-
+func (d *Datasource) query(ctx context.Context, query concurrent.Query) backend.DataResponse {
+	logger := log.DefaultLogger.FromContext(ctx)
 	var response backend.DataResponse
 
 	// Unmarshal the JSON into our queryModel.
@@ -127,7 +127,7 @@ func (d *Datasource) query(ctx context.Context, host string, query concurrent.Qu
 	err := json.Unmarshal(query.DataQuery.JSON, &qm)
 	if err != nil {
 		// Log the actual error since it will be included in the Grafana server log and return a more generic message to the end user.
-		log.DefaultLogger.Error(err.Error())
+		logger.Error(err.Error())
 		return backend.ErrDataResponse(backend.StatusInternal, "Could not parse query")
 	}
 
@@ -136,33 +136,31 @@ func (d *Datasource) query(ctx context.Context, host string, query concurrent.Qu
 	}
 
 	// make request to axiom
-	result, err := d.QueryOverride(ctx, qm.APL, axiQuery.SetStartTime(query.DataQuery.TimeRange.From), axiQuery.SetEndTime(query.DataQuery.TimeRange.To))
+	result, err := d.client.Query(ctx, qm.APL, axiQuery.SetStartTime(query.DataQuery.TimeRange.From), axiQuery.SetEndTime(query.DataQuery.TimeRange.To))
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("axiom error: %v", err.Error()))
 	}
 
 	var frame *data.Frame
-	var newframe *data.Frame
-	log.DefaultLogger.Info("totals", qm.Totals)
-	log.DefaultLogger.Info("buckets", result.Tables[0].Buckets.Size)
-	if len(result.Tables) > 0 {
+	var newFrame *data.Frame
+	if len(result.Tables) > 1 {
 		if qm.Totals {
-			frame = buildFrameSeries(&result.Tables[1])
+			frame = buildFrame(ctx, &result.Tables[1])
 		} else {
-			frame = buildFrameSeries(&result.Tables[0])
+			frame = buildFrame(ctx, &result.Tables[0])
 		}
 		// Only convert longToWide if There is Aggregations
-		newframe, err = data.LongToWide(frame, nil)
+		newFrame, err = data.LongToWide(frame, nil)
 		if err != nil {
-			log.DefaultLogger.Error("transformation from long to wide failed", err.Error())
+			logger.Warn("transformation from long to wide failed", err.Error())
 		}
 	} else {
-		log.DefaultLogger.Info("buildFrameSeries for Matches")
-		frame = buildFrameSeries(&result.Tables[0])
+		logger.Info("buildFrameSeries for Matches")
+		frame = buildFrame(ctx, &result.Tables[0])
 	}
 
-	if newframe != nil {
-		response.Frames = append(response.Frames, newframe)
+	if newFrame != nil {
+		response.Frames = append(response.Frames, newFrame)
 	} else {
 		response.Frames = append(response.Frames, frame)
 	}
@@ -170,7 +168,8 @@ func (d *Datasource) query(ctx context.Context, host string, query concurrent.Qu
 	return response
 }
 
-func buildFrameSeries(result *axiQuery.Table) *data.Frame {
+func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
+	logger := log.DefaultLogger.FromContext(ctx)
 	frame := data.NewFrame("response")
 
 	// define fields
@@ -181,48 +180,61 @@ func buildFrameSeries(result *axiQuery.Table) *data.Frame {
 		switch f.Type {
 		case axiQuery.TypeDateTime:
 			field = data.NewField(f.Name, nil, []time.Time{})
-			break
 		case axiQuery.TypeLong, axiQuery.TypeInt:
-			field = data.NewField(f.Name, nil, []float64{})
-			break
+			field = data.NewField(f.Name, nil, []*float64{})
+		case axiQuery.TypeFloat:
+			field = data.NewField(f.Name, nil, []*float64{})
 		case axiQuery.TypeBool:
-			field = data.NewField(f.Name, nil, []bool{})
-			break
+			field = data.NewField(f.Name, nil, []*bool{})
 		case axiQuery.TypeTimespan:
-			field = data.NewField(f.Name, nil, []int64{})
-			break
+			field = data.NewField(f.Name, nil, []*int64{})
 		default:
-			field = data.NewField(f.Name, nil, []string{})
+			field = data.NewField(f.Name, nil, []*string{})
 		}
 
 		fields = append(fields, field)
 	}
 
-	frame.Fields = fields
+	for colIndex, col := range result.Columns {
 
-	for i := 0; i < len(result.Columns[0]); i++ {
-		values := make([]any, 0, len(result.Fields))
-		for colIndex, col := range result.Columns {
+		for i := 0; i < len(col); i++ {
+			if col[i] == nil {
+				fields[colIndex].Append(nil)
+				continue
+			}
+
+			logger.Info(">>checking field type", "field", fields[colIndex].Name, "type", result.Fields[colIndex].Type.String(), "value", col[i])
 			switch result.Fields[colIndex].Type {
 			case axiQuery.TypeDateTime:
 				// parse time
 				t, err := time.Parse(time.RFC3339, col[i].(string))
 				if err != nil {
-					log.DefaultLogger.Warn("Failed to parse time", "time", col[i])
-					values = append(values, "")
+					logger.Warn("Failed to parse time", "time", col[i])
+					fields[colIndex].Append(time.Time{})
 					continue
 				}
-				values = append(values, t)
+				fields[colIndex].Append(t)
 			case axiQuery.TypeInt:
-				values = append(values, col[i])
+				num := col[i].(float64)
+				fields[colIndex].Append(&num)
+			case axiQuery.TypeFloat:
+				num := col[i].(float64)
+				fields[colIndex].Append(&num)
 			case axiQuery.TypeLong:
-				values = append(values, col[i])
+				num := col[i].(float64)
+				fields[colIndex].Append(&num)
+			case axiQuery.TypeString:
+				txt := col[i].(string)
+				fields[colIndex].Append(&txt)
 			default:
-				values = append(values, fmt.Sprintf("%v", col[i]))
+				txt := fmt.Sprintf("%v", col[i])
+				fields[colIndex].Append(&txt)
 			}
 		}
-		frame.AppendRow(values...)
+
 	}
+
+	frame.Fields = fields
 
 	return frame
 }
@@ -248,11 +260,12 @@ func walkMatch(m any, path []string, valFunc func(string, any)) {
 // datasource configuration page which allows users to verify that
 // a datasource is working as expected.
 func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
+	logger := log.DefaultLogger.FromContext(ctx)
 	// first try to validate the credentials
 	// NOTE: axiom-go doesn't do anything useful today
 	err := d.client.ValidateCredentials(ctx)
 	if err != nil {
-		log.DefaultLogger.Error("Failed to validate credentials", "error", err)
+		logger.Error("Failed to validate credentials", "error", err)
 		return &backend.CheckHealthResult{
 			Status: backend.HealthStatusError,
 			// simple error message, not the actual error
@@ -278,7 +291,7 @@ func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRe
 	}
 
 	if err != nil {
-		log.DefaultLogger.Error("Failed to query Axiom", "error", err)
+		logger.Error("Failed to query Axiom", "error", err)
 		msg = "Failed to query Axiom"
 	}
 

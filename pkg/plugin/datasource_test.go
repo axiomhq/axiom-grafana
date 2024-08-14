@@ -63,7 +63,7 @@ func TestBuildFrame(t *testing.T) {
 			}
 			queryRes.GroupBy = queryResGrpBy
 
-			got := buildFrameSeries(&queryRes)
+			got := buildFrame(&queryRes)
 			t.Logf("%#v", got)
 		})
 	}
