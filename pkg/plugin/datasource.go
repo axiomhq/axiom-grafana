@@ -70,7 +70,7 @@ func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSetti
 	resourceHandler := ds.newResourceHandler()
 	ds.CallResourceHandler = resourceHandler
 
-	logger.Info("datasource & client created", "host", host)
+	logger.Debug("datasource & client created", "host", host)
 
 	return ds, nil
 }
@@ -151,10 +151,10 @@ func (d *Datasource) query(ctx context.Context, query concurrent.Query) backend.
 			frame = buildFrame(ctx, &result.Tables[0])
 		}
 		// Only convert longToWide if There is Aggregations
-		// newFrame, err = data.LongToWide(frame, nil)
-		// if err != nil {
-		// 	logger.Warn("transformation from long to wide failed", err.Error())
-		// }
+		newFrame, err = data.LongToWide(frame, nil)
+		if err != nil {
+			logger.Warn("transformation from long to wide failed", err.Error())
+		}
 	} else {
 		logger.Info("buildFrameSeries for Matches")
 		frame = buildFrame(ctx, &result.Tables[0])
@@ -177,6 +177,8 @@ func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 	fields := make([]*data.Field, 0, len(result.Fields))
 
 	for _, f := range result.Fields {
+		f := f
+
 		var field *data.Field
 		switch f.Type {
 		case axiQuery.TypeDateTime:
@@ -199,13 +201,13 @@ func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 		fields = append(fields, field)
 	}
 
-	logger.Info("<< fields found", "count", len(fields))
-
 	for colIndex, col := range result.Columns {
-
 		for i := 0; i < len(col); i++ {
-			logger.Debug(">>checking field type", "field", fields[colIndex].Name, "type", result.Fields[colIndex].Type.String(), "value", col[i])
-			// if the value is nil, append nil to the field and avoid further processing
+			colIndex := colIndex
+			i := i
+
+			// check if the value is nil
+			// if it is, append nil to the field, skip more processing
 			if col[i] == nil {
 				fields[colIndex].Append(nil)
 				continue
@@ -223,11 +225,18 @@ func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 				}
 				fields[colIndex].Append(t)
 			case axiQuery.TypeInteger:
+				if col[i] == nil {
+					fields[colIndex].Append(float64(0))
+					continue
+				}
 				num := col[i].(float64)
 				fields[colIndex].Append(&num)
 			case axiQuery.TypeFloat:
+				if col[i] == nil {
+					fields[colIndex].Append(float64(0))
+					continue
+				}
 				num := col[i].(float64)
-				fields[colIndex].Append(&num)
 				fields[colIndex].Append(&num)
 			case axiQuery.TypeString, axiQuery.TypeUnknown:
 				txt := col[i].(string)
@@ -240,11 +249,8 @@ func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 				fields[colIndex].Append(&txt)
 			}
 
-			logger.Debug(">>appended value", "index", i, "field", fields[colIndex].Name, "value", col[i])
 		}
-
 	}
-
 	frame.Fields = fields
 
 	return frame
