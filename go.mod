@@ -5,7 +5,7 @@ go 1.21
 toolchain go1.21.0
 
 require (
-	github.com/axiomhq/axiom-go v0.20.2-0.20240814121819-23d904209dfe
+	github.com/axiomhq/axiom-go v0.20.2-0.20240815105717-4633da893b08
 	github.com/grafana/grafana-plugin-sdk-go v0.242.0
 	github.com/stretchr/testify v1.9.0
 )

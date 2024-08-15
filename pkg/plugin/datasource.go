@@ -95,6 +95,7 @@ func (d *Datasource) Dispose() {
 // The QueryDataResponse contains a map of RefID to the response for each query, and each response
 // contains Frames ([]*Frame).
 func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
+	logger := log.DefaultLogger.FromContext(ctx)
 	// log panic
 	defer func() {
 		if r := recover(); r != nil {
@@ -102,10 +103,10 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 			err, ok := r.(error)
 			if !ok {
 				err = fmt.Errorf("pkg: %v", r)
-				log.DefaultLogger.Error(err.Error())
+				logger.Error(err.Error())
 			}
-			log.DefaultLogger.Error(err.Error())
-			log.DefaultLogger.Error(string(debug.Stack()))
+			logger.Error(err.Error())
+			logger.Error(string(debug.Stack()))
 		}
 	}()
 
@@ -150,10 +151,10 @@ func (d *Datasource) query(ctx context.Context, query concurrent.Query) backend.
 			frame = buildFrame(ctx, &result.Tables[0])
 		}
 		// Only convert longToWide if There is Aggregations
-		newFrame, err = data.LongToWide(frame, nil)
-		if err != nil {
-			logger.Warn("transformation from long to wide failed", err.Error())
-		}
+		// newFrame, err = data.LongToWide(frame, nil)
+		// if err != nil {
+		// 	logger.Warn("transformation from long to wide failed", err.Error())
+		// }
 	} else {
 		logger.Info("buildFrameSeries for Matches")
 		frame = buildFrame(ctx, &result.Tables[0])
@@ -173,14 +174,14 @@ func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 	frame := data.NewFrame("response")
 
 	// define fields
-	fields := []*data.Field{}
+	fields := make([]*data.Field, 0, len(result.Fields))
 
 	for _, f := range result.Fields {
 		var field *data.Field
 		switch f.Type {
 		case axiQuery.TypeDateTime:
 			field = data.NewField(f.Name, nil, []time.Time{})
-		case axiQuery.TypeLong, axiQuery.TypeInt:
+		case axiQuery.TypeInteger:
 			field = data.NewField(f.Name, nil, []*float64{})
 		case axiQuery.TypeFloat:
 			field = data.NewField(f.Name, nil, []*float64{})
@@ -188,6 +189,9 @@ func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 			field = data.NewField(f.Name, nil, []*bool{})
 		case axiQuery.TypeTimespan:
 			field = data.NewField(f.Name, nil, []*int64{})
+		case axiQuery.TypeUnknown:
+			// default to string
+			field = data.NewField(f.Name, nil, []*string{})
 		default:
 			field = data.NewField(f.Name, nil, []*string{})
 		}
@@ -195,15 +199,19 @@ func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 		fields = append(fields, field)
 	}
 
+	logger.Info("<< fields found", "count", len(fields))
+
 	for colIndex, col := range result.Columns {
 
 		for i := 0; i < len(col); i++ {
+			logger.Debug(">>checking field type", "field", fields[colIndex].Name, "type", result.Fields[colIndex].Type.String(), "value", col[i])
+			// if the value is nil, append nil to the field and avoid further processing
 			if col[i] == nil {
 				fields[colIndex].Append(nil)
 				continue
 			}
 
-			logger.Info(">>checking field type", "field", fields[colIndex].Name, "type", result.Fields[colIndex].Type.String(), "value", col[i])
+			// check the type and parse it accordingly
 			switch result.Fields[colIndex].Type {
 			case axiQuery.TypeDateTime:
 				// parse time
@@ -214,22 +222,25 @@ func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 					continue
 				}
 				fields[colIndex].Append(t)
-			case axiQuery.TypeInt:
+			case axiQuery.TypeInteger:
 				num := col[i].(float64)
 				fields[colIndex].Append(&num)
 			case axiQuery.TypeFloat:
 				num := col[i].(float64)
 				fields[colIndex].Append(&num)
-			case axiQuery.TypeLong:
-				num := col[i].(float64)
 				fields[colIndex].Append(&num)
-			case axiQuery.TypeString:
+			case axiQuery.TypeString, axiQuery.TypeUnknown:
 				txt := col[i].(string)
 				fields[colIndex].Append(&txt)
+			case axiQuery.TypeBool:
+				b := col[i].(bool)
+				fields[colIndex].Append(&b)
 			default:
 				txt := fmt.Sprintf("%v", col[i])
 				fields[colIndex].Append(&txt)
 			}
+
+			logger.Debug(">>appended value", "index", i, "field", fields[colIndex].Name, "value", col[i])
 		}
 
 	}
