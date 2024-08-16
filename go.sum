@@ -46,6 +46,8 @@ github.com/axiomhq/axiom-go v0.20.2-0.20240814121819-23d904209dfe h1:pRMN0yWpdHW
 github.com/axiomhq/axiom-go v0.20.2-0.20240814121819-23d904209dfe/go.mod h1:ckoH5EEd5Uz1S7BMtP3eKpP7zWbfm2uNwocQexy2Mso=
 github.com/axiomhq/axiom-go v0.20.2-0.20240815105717-4633da893b08 h1:mRG1jQjTEGYBrNU1/N7A5hiAK168To8cBLeppTQebqU=
 github.com/axiomhq/axiom-go v0.20.2-0.20240815105717-4633da893b08/go.mod h1:ckoH5EEd5Uz1S7BMtP3eKpP7zWbfm2uNwocQexy2Mso=
+github.com/axiomhq/axiom-go v0.20.2-0.20240816122711-cbe04aac8849 h1:lROa+wkw1EfnVcgAfMZ7KQKM/5YvCVNlREIUTkj6T6o=
+github.com/axiomhq/axiom-go v0.20.2-0.20240816122711-cbe04aac8849/go.mod h1:ckoH5EEd5Uz1S7BMtP3eKpP7zWbfm2uNwocQexy2Mso=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
 github.com/bitfield/gotestdox v0.2.2 h1:x6RcPAbBbErKLnapz1QeAlf3ospg8efBsedU93CDsnE=
