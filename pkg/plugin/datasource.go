@@ -190,7 +190,7 @@ func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 		case axiQuery.TypeBool:
 			field = data.NewField(f.Name, nil, []*bool{})
 		case axiQuery.TypeTimespan:
-			field = data.NewField(f.Name, nil, []*int64{})
+			field = data.NewField(f.Name, nil, []*float64{})
 		case axiQuery.TypeUnknown:
 			// default to string
 			field = data.NewField(f.Name, nil, []*string{})
@@ -225,17 +225,9 @@ func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 				}
 				fields[colIndex].Append(t)
 			case axiQuery.TypeInteger:
-				if col[i] == nil {
-					fields[colIndex].Append(float64(0))
-					continue
-				}
 				num := col[i].(float64)
 				fields[colIndex].Append(&num)
 			case axiQuery.TypeFloat:
-				if col[i] == nil {
-					fields[colIndex].Append(float64(0))
-					continue
-				}
 				num := col[i].(float64)
 				fields[colIndex].Append(&num)
 			case axiQuery.TypeString, axiQuery.TypeUnknown:
@@ -244,6 +236,9 @@ func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 			case axiQuery.TypeBool:
 				b := col[i].(bool)
 				fields[colIndex].Append(&b)
+			case axiQuery.TypeTimespan:
+				num := col[i].(float64)
+				fields[colIndex].Append(&num)
 			default:
 				txt := fmt.Sprintf("%v", col[i])
 				fields[colIndex].Append(&txt)
