@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"runtime/debug"
-	"strings"
 	"time"
 
 	"github.com/axiomhq/axiom-go/axiom"
@@ -249,22 +248,6 @@ func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 	frame.Fields = fields
 
 	return frame
-}
-
-func walkMatch(m any, path []string, valFunc func(string, any)) {
-	switch m := m.(type) {
-	case map[string]any:
-		for k, v := range m {
-			if k == "" {
-				// results returned by Axiom sometimes exist with an empty key at the end
-				walkMatch(v, path, valFunc)
-			} else {
-				walkMatch(v, append(path, strings.ReplaceAll(k, `.`, `\.`)), valFunc)
-			}
-		}
-	default:
-		valFunc(strings.Join(path, "."), m)
-	}
 }
 
 // CheckHealth handles health checks sent from Grafana to the plugin.
