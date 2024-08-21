@@ -149,13 +149,8 @@ func (d *Datasource) query(ctx context.Context, query concurrent.Query) backend.
 		} else {
 			frame = buildFrame(ctx, &result.Tables[0])
 		}
-		// Only convert longToWide if There is Aggregations
-		newFrame, err = data.LongToWide(frame, nil)
-		if err != nil {
-			logger.Warn("transformation from long to wide failed", err.Error())
-		}
 	} else {
-		logger.Info("buildFrameSeries for Matches")
+		logger.Debug("buildFrameSeries for Matches")
 		frame = buildFrame(ctx, &result.Tables[0])
 	}
 
@@ -175,7 +170,7 @@ func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 	// define fields
 	fields := make([]*data.Field, 0, len(result.Fields))
 
-	for _, f := range result.Fields {
+	for i, f := range result.Fields {
 		f := f
 
 		var field *data.Field
@@ -193,6 +188,14 @@ func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 		case axiQuery.TypeUnknown:
 			// default to string
 			field = data.NewField(f.Name, nil, []*string{})
+		case axiQuery.TypeArray:
+			v := result.Columns[i][0]
+			switch v.(type) {
+			case []float64:
+				field = data.NewField(f.Name, nil, [][]*float64{})
+			default:
+				field = data.NewField(f.Name, nil, [][]*string{})
+			}
 		default:
 			field = data.NewField(f.Name, nil, []*string{})
 		}
