@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"runtime/debug"
-	"strings"
-	"sync"
 	"time"
 
 	"github.com/axiomhq/axiom-go/axiom"
@@ -16,6 +14,7 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
+	"github.com/grafana/grafana-plugin-sdk-go/experimental/concurrent"
 )
 
 // Make sure Datasource implements required interfaces. This is important to do
@@ -31,7 +30,8 @@ var (
 )
 
 // NewDatasource creates a new datasource instance.
-func NewDatasource(_ context.Context, settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+	logger := log.DefaultLogger.FromContext(ctx)
 	accessToken := ""
 	if token, exists := settings.DecryptedSecureJSONData["accessToken"]; exists {
 		// Use the decrypted API key.
@@ -41,6 +41,7 @@ func NewDatasource(_ context.Context, settings backend.DataSourceInstanceSetting
 	var data map[string]string
 	err := json.Unmarshal(settings.JSONData, &data)
 	if err != nil {
+		logger.Error("failed to unmarshal settings", "error", err)
 		return nil, err
 	}
 	host := "https://api.axiom.co"
@@ -57,6 +58,7 @@ func NewDatasource(_ context.Context, settings backend.DataSourceInstanceSetting
 		axiom.SetUserAgent(fmt.Sprintf("axiom-grafana/v%s", Version)),
 	)
 	if err != nil {
+		logger.Error("failed to create axiom client", "error", err)
 		return nil, err
 	}
 
@@ -66,6 +68,8 @@ func NewDatasource(_ context.Context, settings backend.DataSourceInstanceSetting
 	}
 	resourceHandler := ds.newResourceHandler()
 	ds.CallResourceHandler = resourceHandler
+
+	logger.Debug("datasource & client created", "host", host)
 
 	return ds, nil
 }
@@ -90,6 +94,7 @@ func (d *Datasource) Dispose() {
 // The QueryDataResponse contains a map of RefID to the response for each query, and each response
 // contains Frames ([]*Frame).
 func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
+	logger := log.DefaultLogger.FromContext(ctx)
 	// log panic
 	defer func() {
 		if r := recover(); r != nil {
@@ -97,66 +102,14 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 			err, ok := r.(error)
 			if !ok {
 				err = fmt.Errorf("pkg: %v", r)
-				log.DefaultLogger.Error(err.Error())
+				logger.Error(err.Error())
 			}
-			log.DefaultLogger.Error(err.Error())
-			log.DefaultLogger.Error(string(debug.Stack()))
+			logger.Error(err.Error())
+			logger.Error(string(debug.Stack()))
 		}
 	}()
 
-	// create response struct
-	response := backend.NewQueryDataResponse()
-
-	type Job struct {
-		query backend.DataQuery
-	}
-
-	type JobResponse struct {
-		refID    string
-		response backend.DataResponse
-	}
-
-	concurrencyLimit := 10 // limit to 10 concurrent requests
-
-	jobCh := make(chan Job)
-	responseCh := make(chan JobResponse)
-	var wg sync.WaitGroup
-
-	processJobsWorker := func() {
-		for job := range jobCh {
-			res := d.query(ctx, d.apiHost, req.PluginContext, job.query)
-			responseCh <- JobResponse{
-				refID:    job.query.RefID,
-				response: res,
-			}
-		}
-	}
-
-	for i := 0; i < concurrencyLimit; i++ {
-		go processJobsWorker()
-	}
-
-	go func() {
-		for res := range responseCh {
-			// save the response in a hashmap
-			// based on with RefID as identifier
-			response.Responses[res.refID] = res.response
-			wg.Done()
-		}
-	}()
-
-	for _, q := range req.Queries {
-		wg.Add(1)
-		jobCh <- Job{query: q}
-	}
-
-	// Wait for all queries to complete and then close the
-	// channels so that all goroutines exit
-	wg.Wait()
-	close(responseCh)
-	close(jobCh)
-
-	return response, nil
+	return concurrent.QueryData(ctx, req, d.query, 10)
 }
 
 type queryModel struct {
@@ -164,17 +117,17 @@ type queryModel struct {
 	Totals bool   `json:"totals"`
 }
 
-func (d *Datasource) query(ctx context.Context, host string, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
-
+func (d *Datasource) query(ctx context.Context, query concurrent.Query) backend.DataResponse {
+	logger := log.DefaultLogger.FromContext(ctx)
 	var response backend.DataResponse
 
 	// Unmarshal the JSON into our queryModel.
 	var qm queryModel
 
-	err := json.Unmarshal(query.JSON, &qm)
+	err := json.Unmarshal(query.DataQuery.JSON, &qm)
 	if err != nil {
 		// Log the actual error since it will be included in the Grafana server log and return a more generic message to the end user.
-		log.DefaultLogger.Error(err.Error())
+		logger.Error(err.Error())
 		return backend.ErrDataResponse(backend.StatusInternal, "Could not parse query")
 	}
 
@@ -183,30 +136,26 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 	}
 
 	// make request to axiom
-	result, err := d.QueryOverride(ctx, qm.APL, axiQuery.SetStartTime(query.TimeRange.From), axiQuery.SetEndTime(query.TimeRange.To))
+	result, err := d.client.Query(ctx, qm.APL, axiQuery.SetStartTime(query.DataQuery.TimeRange.From), axiQuery.SetEndTime(query.DataQuery.TimeRange.To))
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("axiom error: %v", err.Error()))
 	}
 
 	var frame *data.Frame
-	var newframe *data.Frame
-	if len(result.Result.Buckets.Totals) > 0 {
+	var newFrame *data.Frame
+	if len(result.Tables) > 1 {
 		if qm.Totals {
-			frame = buildFrameTotals(&result.Result)
+			frame = buildFrame(ctx, &result.Tables[1])
 		} else {
-			frame = buildFrameSeries(&result.Result)
-		}
-		// Only convert longToWide if There is Aggregations
-		newframe, err = data.LongToWide(frame, nil)
-		if err != nil {
-			log.DefaultLogger.Error("transformation from long to wide failed", err.Error())
+			frame = buildFrame(ctx, &result.Tables[0])
 		}
 	} else {
-		frame = buildFrameMatches(result)
+		logger.Debug("buildFrameSeries for Matches")
+		frame = buildFrame(ctx, &result.Tables[0])
 	}
 
-	if newframe != nil {
-		response.Frames = append(response.Frames, newframe)
+	if newFrame != nil {
+		response.Frames = append(response.Frames, newFrame)
 	} else {
 		response.Frames = append(response.Frames, frame)
 	}
@@ -214,155 +163,94 @@ func (d *Datasource) query(ctx context.Context, host string, pCtx backend.Plugin
 	return response
 }
 
-func buildFrameSeries(result *axiQuery.Result) *data.Frame {
+func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
+	logger := log.DefaultLogger.FromContext(ctx)
 	frame := data.NewFrame("response")
 
 	// define fields
-	fields := []*data.Field{
-		data.NewField("_time", nil, []time.Time{}),
-	}
+	fields := make([]*data.Field, 0, len(result.Fields))
 
-	for _, group := range result.GroupBy {
-		fields = append(fields,
-			data.NewField(group, nil, []string{}),
-		)
-	}
+	for i, f := range result.Fields {
+		f := f
 
-	for _, agg := range result.Buckets.Totals[0].Aggregations {
-		fields = append(fields,
-			data.NewField(agg.Alias, nil, []*float64{}),
-		)
-	}
-
-	frame.Fields = fields
-
-	// FIXME: This is a hack
-	for _, series := range result.Buckets.Series {
-		for _, g := range series.Groups {
-			values := make([]any, 0, 1+len(g.Group)+len(g.Aggregations)) // +1 for time
-			values = append(values, series.StartTime)
-			for _, field := range result.GroupBy {
-				v := g.Group[field]
-				// convert v to string regardless of type
-				strV := fmt.Sprintf("%v", v)
-				values = append(values, strV)
-			}
-
-			for _, agg := range g.Aggregations {
-				v := agg.Value
-				switch v := v.(type) {
-				case float64:
-					values = append(values, &v)
-				default:
-					values = append(values, nil)
-				}
-			}
-
-			frame.AppendRow(values...)
-		}
-	}
-
-	return frame
-}
-
-func buildFrameTotals(result *axiQuery.Result) *data.Frame {
-	frame := data.NewFrame("response")
-
-	// define fields
-	var fields []*data.Field
-
-	for _, group := range result.GroupBy {
-		fields = append(fields,
-			data.NewField(group, nil, []string{}),
-		)
-	}
-
-	for _, agg := range result.Buckets.Totals[0].Aggregations {
-		fields = append(fields,
-			data.NewField(agg.Alias, nil, []*float64{}),
-		)
-	}
-
-	frame.Fields = fields
-
-	for _, g := range result.Buckets.Totals {
-		values := make([]any, 0, len(g.Group)+len(g.Aggregations))
-		for _, field := range result.GroupBy {
-			v := g.Group[field]
-			// convert v to string regardless of type
-			strV := fmt.Sprintf("%v", v)
-			values = append(values, strV)
-		}
-		for _, agg := range g.Aggregations {
-			v := agg.Value
-			switch v := v.(type) {
-			case float64:
-				values = append(values, &v)
+		var field *data.Field
+		switch f.Type {
+		case axiQuery.TypeDateTime:
+			field = data.NewField(f.Name, nil, []time.Time{})
+		case axiQuery.TypeInteger:
+			field = data.NewField(f.Name, nil, []*float64{})
+		case axiQuery.TypeFloat:
+			field = data.NewField(f.Name, nil, []*float64{})
+		case axiQuery.TypeBool:
+			field = data.NewField(f.Name, nil, []*bool{})
+		case axiQuery.TypeTimespan:
+			field = data.NewField(f.Name, nil, []*float64{})
+		case axiQuery.TypeUnknown:
+			// default to string
+			field = data.NewField(f.Name, nil, []*string{})
+		case axiQuery.TypeArray:
+			v := result.Columns[i][0]
+			switch v.(type) {
+			case []float64:
+				field = data.NewField(f.Name, nil, [][]*float64{})
 			default:
-				values = append(values, nil)
+				field = data.NewField(f.Name, nil, [][]*string{})
 			}
-		}
-		frame.AppendRow(values...)
-	}
-
-	return frame
-}
-
-func buildFrameMatches(result *AplQueryResponse) *data.Frame {
-	frame := data.NewFrame("response").SetMeta(&data.FrameMeta{
-		PreferredVisualization: data.VisTypeTable,
-	})
-
-	// define fields
-	for _, proj := range result.LegacyRequest.Projections {
-		switch proj.Alias {
-		case "_time", "_sysTime":
-			frame.Fields = append(frame.Fields, data.NewField(proj.Alias, nil, []time.Time{}))
 		default:
-			frame.Fields = append(frame.Fields, data.NewField(proj.Alias, nil, []string{}))
+			field = data.NewField(f.Name, nil, []*string{})
 		}
+
+		fields = append(fields, field)
 	}
 
-	for _, match := range result.Matches {
-		// convert structure to map of field values
-		vals := make(map[string]string)
-		walkMatch(match.Data, nil, func(k string, v any) {
-			vals[k] = fmt.Sprintf("%v", v)
-		})
+	for colIndex, col := range result.Columns {
+		for i := 0; i < len(col); i++ {
+			colIndex := colIndex
+			i := i
 
-		// build values
-		values := make([]any, 0, len(frame.Fields))
-		for _, field := range frame.Fields {
-			switch field.Name {
-			case "_time":
-				values = append(values, match.Time)
-			case "_sysTime":
-				values = append(values, match.SysTime)
-			default:
-				values = append(values, vals[field.Name])
+			// check if the value is nil
+			// if it is, append nil to the field, skip more processing
+			if col[i] == nil {
+				fields[colIndex].Append(nil)
+				continue
 			}
-		}
 
-		frame.AppendRow(values...)
+			// check the type and parse it accordingly
+			switch result.Fields[colIndex].Type {
+			case axiQuery.TypeDateTime:
+				// parse time
+				t, err := time.Parse(time.RFC3339, col[i].(string))
+				if err != nil {
+					logger.Warn("Failed to parse time", "time", col[i])
+					fields[colIndex].Append(time.Time{})
+					continue
+				}
+				fields[colIndex].Append(t)
+			case axiQuery.TypeInteger:
+				num := col[i].(float64)
+				fields[colIndex].Append(&num)
+			case axiQuery.TypeFloat:
+				num := col[i].(float64)
+				fields[colIndex].Append(&num)
+			case axiQuery.TypeString, axiQuery.TypeUnknown:
+				txt := col[i].(string)
+				fields[colIndex].Append(&txt)
+			case axiQuery.TypeBool:
+				b := col[i].(bool)
+				fields[colIndex].Append(&b)
+			case axiQuery.TypeTimespan:
+				num := col[i].(float64)
+				fields[colIndex].Append(&num)
+			default:
+				txt := fmt.Sprintf("%v", col[i])
+				fields[colIndex].Append(&txt)
+			}
+
+		}
 	}
+	frame.Fields = fields
 
 	return frame
-}
-
-func walkMatch(m any, path []string, valFunc func(string, any)) {
-	switch m := m.(type) {
-	case map[string]any:
-		for k, v := range m {
-			if k == "" {
-				// results returned by Axiom sometimes exist with an empty key at the end
-				walkMatch(v, path, valFunc)
-			} else {
-				walkMatch(v, append(path, strings.ReplaceAll(k, `.`, `\.`)), valFunc)
-			}
-		}
-	default:
-		valFunc(strings.Join(path, "."), m)
-	}
 }
 
 // CheckHealth handles health checks sent from Grafana to the plugin.
@@ -370,11 +258,12 @@ func walkMatch(m any, path []string, valFunc func(string, any)) {
 // datasource configuration page which allows users to verify that
 // a datasource is working as expected.
 func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
+	logger := log.DefaultLogger.FromContext(ctx)
 	// first try to validate the credentials
 	// NOTE: axiom-go doesn't do anything useful today
 	err := d.client.ValidateCredentials(ctx)
 	if err != nil {
-		log.DefaultLogger.Error("Failed to validate credentials", "error", err)
+		logger.Error("Failed to validate credentials", "error", err)
 		return &backend.CheckHealthResult{
 			Status: backend.HealthStatusError,
 			// simple error message, not the actual error
@@ -400,7 +289,7 @@ func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRe
 	}
 
 	if err != nil {
-		log.DefaultLogger.Error("Failed to query Axiom", "error", err)
+		logger.Error("Failed to query Axiom", "error", err)
 		msg = "Failed to query Axiom"
 	}
 

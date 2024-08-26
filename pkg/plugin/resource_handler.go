@@ -19,6 +19,8 @@ func (d *Datasource) newResourceHandler() backend.CallResourceHandler {
 }
 
 func (d *Datasource) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	logger := log.DefaultLogger.FromContext(r.Context())
+
 	if r.Method != http.MethodGet {
 		http.NotFound(w, r)
 		return
@@ -26,14 +28,14 @@ func (d *Datasource) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	dsf, err := d.DatasetFields(context.Background())
 	if err != nil {
-		log.DefaultLogger.Error("error looking up schema", "error", err.Error())
+		logger.Error("error looking up schema", "error", err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	j, err := json.Marshal(dsf)
 	if err != nil {
-		log.DefaultLogger.Error("error marshaling json", "error", err.Error())
+		logger.Error("error marshaling json", "error", err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -42,7 +44,7 @@ func (d *Datasource) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	_, err = w.Write(j)
 	if err != nil {
-		log.DefaultLogger.Error("error writing response", "error", err.Error())
+		logger.Error("error writing response", "error", err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
