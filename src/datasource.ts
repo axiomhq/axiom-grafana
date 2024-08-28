@@ -1,4 +1,4 @@
-import { DataFrame, DataQueryRequest, DataQueryResponse, DataSourceInstanceSettings } from '@grafana/data';
+import { DataFrame, DataQueryRequest, DataQueryResponse, DataSourceInstanceSettings, ScopedVars } from '@grafana/data';
 import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
 
 import { AxiomQuery, AxiomDataSourceOptions } from './types';
@@ -11,11 +11,12 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
     this.url = instanceSettings.url;
   }
 
-  applyTemplateVariables(query: AxiomQuery) {
+  applyTemplateVariables(query: AxiomQuery, scopedVars: ScopedVars) {
     const templateSrv = getTemplateSrv();
+
     return {
       ...query,
-      apl: query.apl ? templateSrv.replace(query.apl) : '',
+      apl: query.apl ? templateSrv.replace(query.apl, scopedVars) : '',
     };
   }
 
@@ -43,7 +44,9 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
       return [];
     }
 
-    return res ? (res.data[0] as DataFrame).fields[0].values.toArray().map((_) => ({ text: _.toString() })) : [];
+    return res
+      ? (res.data[0] as DataFrame).fields[0].values.map((v) => ({ text: v != null ? v.toString() : null }))
+      : [];
   }
 
   async lookupSchema() {
