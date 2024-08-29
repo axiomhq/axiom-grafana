@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.1
+
+- fix(repeat panels): use scopedVars for query by @schehata in #69
+
+## 0.5.0
+
+- feat: bump frontend-workers/apl by @kevinehosford in #64
+- fix(monaco): update hash and re-add copy step by @kevinehosford in #67
+- use tabular-row format by @schehata in #66
+- Bump fast-loops from 1.1.3 to 1.1.4 by @dependabot in #65
+- Bump micromatch from 4.0.5 to 4.0.8 by @dependabot in #68
+- Bump braces from 3.0.2 to 3.0.3 by @dependabot in #63
+
 ## 0.4.0
 
 - Added support for advanced API tokens by @schehata (#59)
