@@ -149,6 +149,11 @@ func (d *Datasource) query(ctx context.Context, query concurrent.Query) backend.
 		} else {
 			frame = buildFrame(ctx, &result.Tables[0])
 		}
+
+		newFrame, err = data.LongToWide(frame, nil)
+		if err != nil {
+			log.DefaultLogger.Error("transformation from long to wide failed", err.Error())
+		}
 	} else {
 		logger.Debug("buildFrameSeries for Matches")
 		frame = buildFrame(ctx, &result.Tables[0])
