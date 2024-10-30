@@ -2,6 +2,7 @@ import { DataFrame, DataQueryRequest, DataQueryResponse, DataSourceInstanceSetti
 import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
 
 import { AxiomQuery, AxiomDataSourceOptions } from './types';
+import { lastValueFrom } from 'rxjs';
 
 export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourceOptions> {
   url?: string;
@@ -35,7 +36,7 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
     let res: DataQueryResponse | undefined;
 
     try {
-      res = await this.query(request).toPromise();
+      res = await lastValueFrom(this.query(request));
     } catch (err) {
       return Promise.reject(err);
     }

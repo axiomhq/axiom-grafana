@@ -14,13 +14,7 @@
       "name": "Axiom, Inc.",
       "url": "https://axiom.co"
     },
-    "keywords": [
-      "datasource",
-      "axiom",
-      "events",
-      "metrics",
-      "logs"
-    ],
+    "keywords": ["datasource", "axiom", "events", "metrics", "logs"],
     "logos": {
       "small": "img/logo.svg",
       "large": "img/logo.svg"

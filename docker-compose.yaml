@@ -1,14 +1,14 @@
 services:
   grafana:
     user: root
-    container_name: 'axiom-axiomgrafana-datasource'
+    container_name: 'axiomhq-axiom-datasource'
 
-    # platform: 'linux/amd64'
+    # platform: linux/arm64
     build:
       context: ./.config
       args:
         grafana_image: ${GRAFANA_IMAGE:-grafana-enterprise}
-        grafana_version: ${GRAFANA_VERSION:-11.1.1}
+        grafana_version: ${GRAFANA_VERSION:-11.2.2}
         development: ${DEVELOPMENT:-false}
     ports:
       - 3000:3000/tcp
@@ -19,13 +19,14 @@ services:
     cap_add:
       - SYS_PTRACE
     volumes:
-      - ./dist:/var/lib/grafana/plugins/axiom-axiomgrafana-datasource
+      - ./dist:/var/lib/grafana/plugins/axiomhq-axiom-datasource
       - ./provisioning:/etc/grafana/provisioning
-      - .:/root/axiom-axiomgrafana-datasource
+      - .:/root/axiomhq-axiom-datasource
 
     environment:
       NODE_ENV: development
-      GF_LOG_FILTERS: plugin.axiom-axiomgrafana-datasource:debug
+      GF_LOG_FILTERS: plugin.axiomhq-axiom-datasource:debug
       GF_LOG_LEVEL: debug
       GF_DATAPROXY_LOGGING: 1
-      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: axiom-axiomgrafana-datasource
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: axiomhq-axiom-datasource
+      GF_DEFAULT_APP_MODE: development

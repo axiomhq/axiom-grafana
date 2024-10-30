@@ -10,4 +10,3 @@ datasources:
     editable: true
     jsonData:
       path: '/resources'
-
