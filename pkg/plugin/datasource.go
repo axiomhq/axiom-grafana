@@ -98,11 +98,11 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 	// log panic
 	defer func() {
 		if r := recover(); r != nil {
-			var ok bool
 			err, ok := r.(error)
 			if !ok {
 				err = fmt.Errorf("pkg: %v", r)
 				logger.Error(err.Error())
+				return
 			}
 			logger.Error(err.Error())
 			logger.Error(string(debug.Stack()))
@@ -122,11 +122,11 @@ func (d *Datasource) query(ctx context.Context, query concurrent.Query) backend.
 	// log panic
 	defer func() {
 		if r := recover(); r != nil {
-			var ok bool
 			err, ok := r.(error)
 			if !ok {
 				err = fmt.Errorf("pkg: %v", r)
 				logger.Error(err.Error())
+				return
 			}
 			logger.Error(err.Error())
 			logger.Error(string(debug.Stack()))
