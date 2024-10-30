@@ -3,6 +3,7 @@ services:
     user: root
     container_name: 'axiomhq-axiom-datasource'
 
+    # platform: linux/arm64
     build:
       context: ./.config
       args:
@@ -13,8 +14,8 @@ services:
       - 3000:3000/tcp
       - 2345:2345/tcp # delve
     security_opt:
-      - "apparmor:unconfined"
-      - "seccomp:unconfined"
+      - 'apparmor:unconfined'
+      - 'seccomp:unconfined'
     cap_add:
       - SYS_PTRACE
     volumes:
@@ -28,3 +29,4 @@ services:
       GF_LOG_LEVEL: debug
       GF_DATAPROXY_LOGGING: 1
       GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: axiomhq-axiom-datasource
+      GF_DEFAULT_APP_MODE: development

@@ -119,6 +119,20 @@ type queryModel struct {
 
 func (d *Datasource) query(ctx context.Context, query concurrent.Query) backend.DataResponse {
 	logger := log.DefaultLogger.FromContext(ctx)
+	// log panic
+	defer func() {
+		if r := recover(); r != nil {
+			var ok bool
+			err, ok := r.(error)
+			if !ok {
+				err = fmt.Errorf("pkg: %v", r)
+				logger.Error(err.Error())
+			}
+			logger.Error(err.Error())
+			logger.Error(string(debug.Stack()))
+		}
+	}()
+
 	var response backend.DataResponse
 
 	// Unmarshal the JSON into our queryModel.
@@ -138,7 +152,8 @@ func (d *Datasource) query(ctx context.Context, query concurrent.Query) backend.
 	// make request to axiom
 	result, err := d.client.Query(ctx, qm.APL, axiQuery.SetStartTime(query.DataQuery.TimeRange.From), axiQuery.SetEndTime(query.DataQuery.TimeRange.To))
 	if err != nil {
-		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("axiom error: %v", err.Error()))
+		logger.Error("failed to query axiom", "error", err)
+		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("axiom error: %v", err.Error()))
 	}
 
 	var frame *data.Frame
@@ -155,7 +170,6 @@ func (d *Datasource) query(ctx context.Context, query concurrent.Query) backend.
 			log.DefaultLogger.Error("transformation from long to wide failed", err.Error())
 		}
 	} else {
-		logger.Debug("buildFrameSeries for Matches")
 		frame = buildFrame(ctx, &result.Tables[0])
 	}
 
