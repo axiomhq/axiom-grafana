@@ -1,6 +1,6 @@
 {
   "name": "axiom-datasource",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Query Axiom through Grafana",
   "scripts": {
     "build": "webpack -c ./webpack.config.ts --env production",

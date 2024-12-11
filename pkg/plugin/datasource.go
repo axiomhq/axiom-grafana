@@ -203,7 +203,7 @@ func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 		case axiQuery.TypeBool:
 			field = data.NewField(f.Name, nil, []*bool{})
 		case axiQuery.TypeTimespan:
-			field = data.NewField(f.Name, nil, []*float64{})
+			field = data.NewField(f.Name, nil, []*string{})
 		case axiQuery.TypeUnknown:
 			// default to string
 			field = data.NewField(f.Name, nil, []*string{})
@@ -258,7 +258,7 @@ func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 				b := col[i].(bool)
 				fields[colIndex].Append(&b)
 			case axiQuery.TypeTimespan:
-				num := col[i].(float64)
+				num := col[i].(string)
 				fields[colIndex].Append(&num)
 			default:
 				txt := fmt.Sprintf("%v", col[i])
