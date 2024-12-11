@@ -167,7 +167,7 @@ func (d *Datasource) query(ctx context.Context, query concurrent.Query) backend.
 
 		newFrame, err = data.LongToWide(frame, nil)
 		if err != nil {
-			log.DefaultLogger.Error("transformation from long to wide failed", err.Error())
+			logger.Error("transformation from long to wide failed", "error", err.Error())
 		}
 	} else {
 		frame = buildFrame(ctx, &result.Tables[0])
