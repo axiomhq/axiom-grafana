@@ -191,23 +191,24 @@ func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 
 	for i, f := range result.Fields {
 		f := f
+		i := i
 
 		var field *data.Field
 		switch f.Type {
-		case axiQuery.TypeDateTime:
+		case "datetime":
 			field = data.NewField(f.Name, nil, []time.Time{})
-		case axiQuery.TypeInteger:
+		case "integer":
 			field = data.NewField(f.Name, nil, []*float64{})
-		case axiQuery.TypeFloat:
+		case "float":
 			field = data.NewField(f.Name, nil, []*float64{})
-		case axiQuery.TypeBool:
+		case "bool":
 			field = data.NewField(f.Name, nil, []*bool{})
-		case axiQuery.TypeTimespan:
+		case "timespan":
 			field = data.NewField(f.Name, nil, []*string{})
-		case axiQuery.TypeUnknown:
+		case "unknown":
 			// default to string
 			field = data.NewField(f.Name, nil, []*string{})
-		case axiQuery.TypeArray:
+		case "array":
 			v := result.Columns[i][0]
 			switch v.(type) {
 			case []float64:
@@ -236,7 +237,7 @@ func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 
 			// check the type and parse it accordingly
 			switch result.Fields[colIndex].Type {
-			case axiQuery.TypeDateTime:
+			case "datetime":
 				// parse time
 				t, err := time.Parse(time.RFC3339, col[i].(string))
 				if err != nil {
@@ -245,19 +246,19 @@ func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 					continue
 				}
 				fields[colIndex].Append(t)
-			case axiQuery.TypeInteger:
+			case "integer":
 				num := col[i].(float64)
 				fields[colIndex].Append(&num)
-			case axiQuery.TypeFloat:
+			case "float":
 				num := col[i].(float64)
 				fields[colIndex].Append(&num)
-			case axiQuery.TypeString, axiQuery.TypeUnknown:
+			case "string", "unknown":
 				txt := col[i].(string)
 				fields[colIndex].Append(&txt)
-			case axiQuery.TypeBool:
+			case "bool":
 				b := col[i].(bool)
 				fields[colIndex].Append(&b)
-			case axiQuery.TypeTimespan:
+			case "timespan":
 				num := col[i].(string)
 				fields[colIndex].Append(&num)
 			default:
