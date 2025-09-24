@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.3
+
+- Update Grafana plugin SDK to v12
+- Fix datasource settings to expect injected Grafana settings that are not strings
+
 ## 0.5.1
 
 - fix(repeat panels): use scopedVars for query by @schehata in #69

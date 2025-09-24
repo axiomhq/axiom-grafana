@@ -38,7 +38,7 @@ func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSetti
 		accessToken = token
 	}
 
-	var data map[string]string
+	var data map[string]any
 	err := json.Unmarshal(settings.JSONData, &data)
 	if err != nil {
 		logger.Error("failed to unmarshal settings", "error", err)
@@ -46,10 +46,10 @@ func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSetti
 	}
 	host := "https://api.axiom.co"
 	if apiHost, exists := data["apiHost"]; exists {
-		host = apiHost
+		host = apiHost.(string)
 	}
 
-	orgID := data["orgID"]
+	orgID := checkString(data["orgID"])
 
 	client, err := axiom.NewClient(
 		axiom.SetToken(accessToken),
@@ -280,7 +280,6 @@ func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
 	logger := log.DefaultLogger.FromContext(ctx)
 	// first try to validate the credentials
-	// NOTE: axiom-go doesn't do anything useful today
 	err := d.client.ValidateCredentials(ctx)
 	if err != nil {
 		logger.Error("Failed to validate credentials", "error", err)
@@ -317,4 +316,11 @@ func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRe
 		Status:  backend.HealthStatusError,
 		Message: msg,
 	}, nil
+}
+
+func checkString(i interface{}) string {
+	if str, ok := i.(string); ok {
+		return str
+	}
+	return ""
 }
