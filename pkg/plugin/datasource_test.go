@@ -42,13 +42,13 @@ func TestBuildQueryEndpoint(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "no region - uses apiHost",
+			name:     "no region - uses apiHost with path appended",
 			apiHost:  "https://api.axiom.co",
 			region:   "",
 			expected: "https://api.axiom.co/v1/datasets/_apl",
 		},
 		{
-			name:     "region without scheme - adds https",
+			name:     "region set - uses edge endpoint",
 			apiHost:  "https://api.axiom.co",
 			region:   "eu-central-1.aws.edge.axiom.co",
 			expected: "https://eu-central-1.aws.edge.axiom.co/v1/datasets/_apl?format=tabular",
@@ -66,16 +66,46 @@ func TestBuildQueryEndpoint(t *testing.T) {
 			expected: "https://us-east-1.aws.edge.axiom.co/v1/datasets/_apl?format=tabular",
 		},
 		{
-			name:     "legacy EU instance",
+			name:     "legacy EU instance - no region",
 			apiHost:  "https://api.eu.axiom.co",
 			region:   "",
 			expected: "https://api.eu.axiom.co/v1/datasets/_apl",
 		},
 		{
-			name:     "staging edge",
+			name:     "staging edge region",
 			apiHost:  "https://api.axiom.co",
 			region:   "us-east-1.edge.staging.axiomdomain.co",
 			expected: "https://us-east-1.edge.staging.axiomdomain.co/v1/datasets/_apl?format=tabular",
+		},
+		{
+			name:     "apiHost with custom path - used as-is, takes precedence over region",
+			apiHost:  "http://localhost:3400/v1/datasets/_apl",
+			region:   "eu-central-1.aws.edge.axiom.co",
+			expected: "http://localhost:3400/v1/datasets/_apl",
+		},
+		{
+			name:     "apiHost with custom path - no region",
+			apiHost:  "http://localhost:8080/custom/query/path",
+			region:   "",
+			expected: "http://localhost:8080/custom/query/path",
+		},
+		{
+			name:     "apiHost with trailing slash - appends query path",
+			apiHost:  "https://api.axiom.co/",
+			region:   "",
+			expected: "https://api.axiom.co/v1/datasets/_apl",
+		},
+		{
+			name:     "no apiHost, no region - uses default cloud endpoint",
+			apiHost:  "",
+			region:   "",
+			expected: "https://api.axiom.co/v1/datasets/_apl",
+		},
+		{
+			name:     "no apiHost, region set - uses region",
+			apiHost:  "",
+			region:   "eu-central-1.aws.edge.axiom.co",
+			expected: "https://eu-central-1.aws.edge.axiom.co/v1/datasets/_apl?format=tabular",
 		},
 	}
 

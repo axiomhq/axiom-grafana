@@ -154,13 +154,8 @@ func (d *Datasource) query(ctx context.Context, query concurrent.Query) backend.
 	}
 
 	// make request to axiom
-	// Use edge endpoint if region is configured, otherwise use the standard client
-	var result *axiQuery.Result
-	if d.region != "" {
-		result, err = d.QueryEdge(ctx, qm.APL, query.DataQuery.TimeRange.From, query.DataQuery.TimeRange.To)
-	} else {
-		result, err = d.client.Query(ctx, qm.APL, axiQuery.SetStartTime(query.DataQuery.TimeRange.From), axiQuery.SetEndTime(query.DataQuery.TimeRange.To))
-	}
+	// Use custom query method that handles edge endpoints and smart URL detection
+	result, err := d.QueryEdge(ctx, qm.APL, query.DataQuery.TimeRange.From, query.DataQuery.TimeRange.To)
 	if err != nil {
 		logger.Error("failed to query axiom", "error", err)
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("axiom error: %v", err.Error()))

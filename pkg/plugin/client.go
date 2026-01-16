@@ -66,19 +66,53 @@ type EdgeQueryResponse struct {
 }
 
 // buildQueryEndpoint returns the query endpoint URL.
-// If region is configured, it returns the edge endpoint.
-// Otherwise, it returns the apiHost endpoint.
+// Priority: apiHost (with path detection) > region > default cloud endpoint
+//
+// If apiHost has a custom path, it's used as-is.
+// If apiHost has no path (or only "/"), the query path is appended for backwards compatibility.
+// If region is set (and apiHost has no custom path), use the edge endpoint.
 func (d *Datasource) buildQueryEndpoint() (string, error) {
+	// If apiHost is set, check if it has a custom path
+	if d.apiHost != "" {
+		host := strings.TrimSuffix(d.apiHost, "/")
+
+		// Parse URL to check if path is provided
+		parsed, err := url.Parse(host)
+		if err != nil {
+			return "", fmt.Errorf("failed to parse apiHost: %w", err)
+		}
+
+		path := parsed.Path
+		// If path is empty or just "/", we need to append the query path
+		if path == "" || path == "/" {
+			// Check if region is set - if so, use region for queries
+			if d.region != "" {
+				region := strings.TrimSuffix(d.region, "/")
+				// Ensure we have a proper URL with scheme
+				if !strings.HasPrefix(region, "http://") && !strings.HasPrefix(region, "https://") {
+					region = "https://" + region
+				}
+				return fmt.Sprintf("%s/v1/datasets/_apl?format=tabular", region), nil
+			}
+			// No region, append query path to apiHost for backwards compatibility
+			return fmt.Sprintf("%s/v1/datasets/_apl", host), nil
+		}
+
+		// apiHost has a custom path, use as-is (apiHost takes precedence)
+		return host, nil
+	}
+
+	// No apiHost set, check for region
 	if d.region != "" {
 		region := strings.TrimSuffix(d.region, "/")
-		// Ensure we have a proper URL with scheme
 		if !strings.HasPrefix(region, "http://") && !strings.HasPrefix(region, "https://") {
 			region = "https://" + region
 		}
 		return fmt.Sprintf("%s/v1/datasets/_apl?format=tabular", region), nil
 	}
-	// Fallback to apiHost (backwards compatibility)
-	return url.JoinPath(d.apiHost, "v1/datasets/_apl")
+
+	// Default: use cloud endpoint
+	return "https://api.axiom.co/v1/datasets/_apl", nil
 }
 
 // QueryEdge executes an APL query against the edge endpoint.
