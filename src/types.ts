@@ -18,6 +18,12 @@ export const DEFAULT_QUERY: Partial<AxiomQuery> = {
 export interface AxiomDataSourceOptions extends DataSourceJsonData {
   apiHost: string;
   orgID: string;
+  /**
+   * Optional regional edge domain for queries (e.g., "eu-central-1.aws.edge.axiom.co").
+   * When set, queries are routed to https://{region}/v1/datasets/_apl.
+   * All other API calls (schema lookup, health checks) continue to use apiHost.
+   */
+  region?: string;
 }
 
 /**

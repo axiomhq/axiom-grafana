@@ -34,6 +34,66 @@ func TestQueryData(t *testing.T) {
 	require.Len(t, resp.Responses, 3, "QueryData must return a response for each query")
 }
 
+func TestBuildQueryEndpoint(t *testing.T) {
+	tests := []struct {
+		name     string
+		apiHost  string
+		region   string
+		expected string
+	}{
+		{
+			name:     "no region - uses apiHost",
+			apiHost:  "https://api.axiom.co",
+			region:   "",
+			expected: "https://api.axiom.co/v1/datasets/_apl",
+		},
+		{
+			name:     "region without scheme - adds https",
+			apiHost:  "https://api.axiom.co",
+			region:   "eu-central-1.aws.edge.axiom.co",
+			expected: "https://eu-central-1.aws.edge.axiom.co/v1/datasets/_apl?format=tabular",
+		},
+		{
+			name:     "region with https scheme",
+			apiHost:  "https://api.axiom.co",
+			region:   "https://eu-central-1.aws.edge.axiom.co",
+			expected: "https://eu-central-1.aws.edge.axiom.co/v1/datasets/_apl?format=tabular",
+		},
+		{
+			name:     "region with trailing slash",
+			apiHost:  "https://api.axiom.co",
+			region:   "us-east-1.aws.edge.axiom.co/",
+			expected: "https://us-east-1.aws.edge.axiom.co/v1/datasets/_apl?format=tabular",
+		},
+		{
+			name:     "legacy EU instance",
+			apiHost:  "https://api.eu.axiom.co",
+			region:   "",
+			expected: "https://api.eu.axiom.co/v1/datasets/_apl",
+		},
+		{
+			name:     "staging edge",
+			apiHost:  "https://api.axiom.co",
+			region:   "us-east-1.edge.staging.axiomdomain.co",
+			expected: "https://us-east-1.edge.staging.axiomdomain.co/v1/datasets/_apl?format=tabular",
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			ds := Datasource{
+				apiHost: test.apiHost,
+				region:  test.region,
+			}
+
+			endpoint, err := ds.buildQueryEndpoint()
+			require.NoError(t, err)
+			require.Equal(t, test.expected, endpoint)
+		})
+	}
+}
+
 func TestBuildFrame(t *testing.T) {
 	tests := []struct {
 		name        string

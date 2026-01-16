@@ -19,6 +19,14 @@ export function ConfigEditor(props: Props) {
     onOptionsChange({ ...options, jsonData });
   };
 
+  const onRegionChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const jsonData = {
+      ...options.jsonData,
+      region: event.target.value,
+    };
+    onOptionsChange({ ...options, jsonData });
+  };
+
   // Secure field (only sent to the backend)
   const onAccessTokenChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.value.startsWith('xapt-')) {
@@ -96,14 +104,27 @@ export function ConfigEditor(props: Props) {
         </div>
       )}
       <div>
-        <Label description="The Axiom host to use.">
-          <h6>Axiom Host</h6>
+        <Label description="The Axiom API host for management operations (schema lookup, health checks).">
+          <h6>Axiom API Host</h6>
         </Label>
         <InlineField label="URL" labelWidth={17}>
           <Input
             onChange={onHostChange}
             value={jsonData.apiHost || 'https://api.axiom.co'}
             placeholder="Axiom API host URL"
+            width={40}
+          />
+        </InlineField>
+      </div>
+      <div>
+        <Label description="Optional regional edge domain for queries. When set, queries are routed to this edge. Leave empty to use the API host for queries.">
+          <h6>Edge Region (Optional)</h6>
+        </Label>
+        <InlineField label="Region" labelWidth={17}>
+          <Input
+            onChange={onRegionChange}
+            value={jsonData.region || ''}
+            placeholder="e.g., eu-central-1.aws.edge.axiom.co"
             width={40}
           />
         </InlineField>

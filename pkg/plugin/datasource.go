@@ -49,6 +49,8 @@ func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSetti
 		host = apiHost.(string)
 	}
 
+	region := checkString(data["region"])
+
 	orgID := checkString(data["orgID"])
 
 	client, err := axiom.NewClient(
@@ -65,6 +67,7 @@ func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSetti
 	ds := &Datasource{
 		client:  client,
 		apiHost: host,
+		region:  region,
 	}
 	resourceHandler := ds.newResourceHandler()
 	ds.CallResourceHandler = resourceHandler
@@ -79,6 +82,7 @@ func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSetti
 type Datasource struct {
 	backend.CallResourceHandler
 	apiHost string
+	region  string // Optional regional edge domain for queries
 	client  *axiom.Client
 }
 
@@ -150,7 +154,13 @@ func (d *Datasource) query(ctx context.Context, query concurrent.Query) backend.
 	}
 
 	// make request to axiom
-	result, err := d.client.Query(ctx, qm.APL, axiQuery.SetStartTime(query.DataQuery.TimeRange.From), axiQuery.SetEndTime(query.DataQuery.TimeRange.To))
+	// Use edge endpoint if region is configured, otherwise use the standard client
+	var result *axiQuery.Result
+	if d.region != "" {
+		result, err = d.QueryEdge(ctx, qm.APL, query.DataQuery.TimeRange.From, query.DataQuery.TimeRange.To)
+	} else {
+		result, err = d.client.Query(ctx, qm.APL, axiQuery.SetStartTime(query.DataQuery.TimeRange.From), axiQuery.SetEndTime(query.DataQuery.TimeRange.To))
+	}
 	if err != nil {
 		logger.Error("failed to query axiom", "error", err)
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("axiom error: %v", err.Error()))
