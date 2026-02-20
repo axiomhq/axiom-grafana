@@ -6,10 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"runtime/debug"
-	"time"
-
-	"slices"
-	"strconv"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
@@ -190,182 +186,25 @@ func (d *Datasource) query(ctx context.Context, query concurrent.Query) backend.
 
 func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 	frame := data.NewFrame("response")
+	logger := log.DefaultLogger.FromContext(ctx)
 
-	// Create field groups, each original field can produce 1 or more output fields
-	fieldGroups := make([][]*data.Field, len(result.Fields))
-
-	for i, f := range result.Fields {
-		fieldGroups[i] = createField(f, result.Columns[i])
+	// Process each column with appropriate processor
+	var allFields []*data.Field
+	for i, col := range result.Columns {
+		processor := NewFieldProcessor(logger, result.Fields[i])
+		fields, err := processor.ProcessColumn(col)
+		if err != nil {
+			logger.Error("failed to process column", "field", result.Fields[i].Name, "error", err)
+			continue
+		}
+		allFields = append(allFields, fields...)
 	}
 
-	// Process data for all fields
-	for colIndex, col := range result.Columns {
-		fieldGroups[colIndex] = populateFieldData(ctx, fieldGroups[colIndex], col, result.Fields[colIndex])
-	}
-
-	// Flatten field groups into final fields array
-	frame.Fields = slices.Concat(fieldGroups...)
-
+	frame.Fields = allFields
 	return frame
 }
 
-// createField creates appropriate field group for any field type
-func createField(f axiQuery.Field, column []any) []*data.Field {
-	if isHistogramField(f) {
-		// Histogram fields: return empty group, will be populated during data processing
-		return []*data.Field{}
-	}
 
-	// Regular fields: return single field group
-	var field *data.Field
-	switch f.Type {
-	case "datetime":
-		field = data.NewField(f.Name, nil, []time.Time{})
-	case "integer":
-		field = data.NewField(f.Name, nil, []*float64{})
-	case "float":
-		field = data.NewField(f.Name, nil, []*float64{})
-	case "bool":
-		field = data.NewField(f.Name, nil, []*bool{})
-	case "timespan":
-		field = data.NewField(f.Name, nil, []*string{})
-	case "unknown":
-		field = data.NewField(f.Name, nil, []*string{})
-	case "array":
-		// For non-histogram arrays, check the element type from the data
-		if len(column) > 0 && column[0] != nil {
-			switch column[0].(type) {
-			case []float64:
-				field = data.NewField(f.Name, nil, [][]*float64{})
-			default:
-				field = data.NewField(f.Name, nil, [][]*string{})
-			}
-		} else {
-			field = data.NewField(f.Name, nil, [][]*string{})
-		}
-	default:
-		field = data.NewField(f.Name, nil, []*string{})
-	}
-	return []*data.Field{field}
-}
-
-// populateFieldData populates field data for any field type
-func populateFieldData(ctx context.Context, fieldGroup []*data.Field, col []any, fieldDef axiQuery.Field) []*data.Field {
-	if isHistogramField(fieldDef) {
-		// Process histogram field: create and populate bucket fields
-		return processHistogramColumn(col)
-	}
-
-	logger := log.DefaultLogger.FromContext(ctx)
-
-	// Process regular field: populate existing field (fieldGroup has exactly one field)
-	field := fieldGroup[0]
-	for _, val := range col {
-		if val == nil {
-			field.Append(nil)
-			continue
-		}
-
-		switch fieldDef.Type {
-		case "datetime":
-			t, err := time.Parse(time.RFC3339, val.(string))
-			if err != nil {
-				logger.Warn("Failed to parse time", "time", val)
-				field.Append(time.Time{})
-				continue
-			}
-			field.Append(t)
-		case "integer":
-			num := val.(float64)
-			field.Append(&num)
-		case "float":
-			num := val.(float64)
-			field.Append(&num)
-		case "string", "unknown":
-			txt := val.(string)
-			field.Append(&txt)
-		case "bool":
-			b := val.(bool)
-			field.Append(&b)
-		case "timespan":
-			num := val.(string)
-			field.Append(&num)
-		default:
-			txt := fmt.Sprintf("%v", val)
-			field.Append(&txt)
-		}
-	}
-	return fieldGroup
-}
-
-// processHistogramColumn processes a single histogram column and returns bucket fields
-func processHistogramColumn(column []any) []*data.Field {
-	// Collect all unique boundaries
-	boundarySet := make(map[float64]bool)
-
-	for _, cellValue := range column {
-		if cellValue != nil {
-			if histArray, ok := cellValue.([]any); ok {
-				for _, bucket := range histArray {
-					if bucketMap, ok := bucket.(map[string]any); ok {
-						if toVal, ok := bucketMap["to"].(float64); ok {
-							boundarySet[toVal] = true
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Sort boundaries
-	boundaries := make([]float64, 0, len(boundarySet))
-	for boundary := range boundarySet {
-		boundaries = append(boundaries, boundary)
-	}
-	slices.Sort(boundaries)
-
-	// Create bucket fields
-	bucketFields := make([]*data.Field, len(boundaries))
-	for i, boundary := range boundaries {
-		labels := map[string]string{"le": strconv.FormatFloat(boundary, 'g', -1, 64)}
-		bucketFields[i] = data.NewField("", labels, []*float64{})
-	}
-
-	// Populate bucket fields
-	for _, cellValue := range column {
-		bucketCounts := make(map[float64]float64)
-
-		if cellValue != nil {
-			if histArray, ok := cellValue.([]any); ok {
-				for _, bucket := range histArray {
-					if bucketMap, ok := bucket.(map[string]any); ok {
-						if toVal, ok := bucketMap["to"].(float64); ok {
-							if countVal, ok := bucketMap["count"].(float64); ok {
-								bucketCounts[toVal] = countVal
-							}
-						}
-					}
-				}
-			}
-		}
-
-		for i, boundary := range boundaries {
-			if count, exists := bucketCounts[boundary]; exists {
-				bucketFields[i].Append(&count)
-			} else {
-				bucketFields[i].Append(nil)
-			}
-		}
-	}
-
-	return bucketFields
-}
-
-// isHistogramField checks if a field is a histogram aggregation field
-func isHistogramField(field axiQuery.Field) bool {
-	// Check if field has Aggregation metadata indicating histogram
-	return field.Aggregation != nil && field.Aggregation.Op == axiQuery.OpHistogram
-}
 
 // CheckHealth handles health checks sent from Grafana to the plugin.
 // The main use case for these health checks is the test button on the
