@@ -97,6 +97,43 @@ func TestBuildFrame(t *testing.T) {
 				t.Logf("Created frame with %d fields (%d buckets)", len(frame.Fields), bucketCount)
 			},
 		},
+		{
+			name:        "topk_query",
+			aplResponse: `{"format":"tabular","status":{"elapsedTime":108610,"blocksExamined":13,"blocksCached":11,"blocksMatched":0,"blocksSkipped":0,"rowsExamined":821512,"rowsMatched":818020,"numGroups":0,"isPartial":false,"cacheStatus":5,"minBlockTime":"2026-02-20T14:55:57Z","maxBlockTime":"2026-02-20T15:26:05Z"},"tables":[{"name":"0","sources":[{"name":"sample-http-logs"}],"fields":[{"name":"topk_geo.city","type":"array","agg":{"name":"topk","fields":["geo.city"],"args":[10]}}],"order":[],"groups":[],"range":{"field":"_time","start":"2026-02-20T14:56:06Z","end":"2026-02-20T15:26:06Z"},"columns":[[[{"key":"Leipzig","count":4609,"error":4606},{"key":"Würzburg","count":4609,"error":4603},{"key":"Catalão","count":4608,"error":4607},{"key":"Chiba","count":4608,"error":4604},{"count":4608,"error":4604,"key":"Ghāziābād"},{"key":"Morden","count":4608,"error":4606},{"key":"Münster","count":4608,"error":4607},{"key":"Oaxaca","count":4608,"error":4607},{"key":"Parkwood","count":4608,"error":4607},{"count":4608,"error":4606,"key":"Rājahmundry"}]]]}],"datasetNames":["sample-http-logs"],"fieldsMetaMap":{"sample-http-logs":[{"name":"req_duration_ms","type":"integer|float","unit":"ms","hidden":false,"description":""},{"name":"resp_body_size_bytes","type":"integer","unit":"decmbytes","hidden":false,"description":""},{"name":"resp_header_size_bytes","type":"integer","unit":"Kbits","hidden":false,"description":""}]}}`,
+			assertions: func(t *testing.T, frame *data.Frame) {
+				// Should have 3 fields from topk processing: key, count, error
+				require.Len(t, frame.Fields, 3, "should have 3 fields from topk processing")
+
+				// Check field names and types
+				keyField := frame.Fields[0]
+				assert.Equal(t, "key", keyField.Name, "first field should be key")
+				assert.Equal(t, data.FieldTypeNullableString, keyField.Type(), "key field should be nullable string")
+
+				countField := frame.Fields[1]
+				assert.Equal(t, "count", countField.Name, "second field should be count")
+				assert.Equal(t, data.FieldTypeNullableFloat64, countField.Type(), "count field should be nullable float64")
+
+				errorField := frame.Fields[2]
+				assert.Equal(t, "error", errorField.Name, "third field should be error")
+				assert.Equal(t, data.FieldTypeNullableFloat64, errorField.Type(), "error field should be nullable float64")
+
+				// Should have data rows (10 topk entries)
+				assert.Equal(t, 10, keyField.Len(), "should have 10 topk entries")
+				assert.Equal(t, 10, countField.Len(), "should have 10 topk entries")
+				assert.Equal(t, 10, errorField.Len(), "should have 10 topk entries")
+
+				// Check some specific values from the test data
+				keyValue, ok := keyField.At(0).(*string)
+				require.True(t, ok, "first key should be string pointer")
+				assert.Equal(t, "Leipzig", *keyValue, "first key should be Leipzig")
+
+				countValue, ok := countField.At(0).(*float64)
+				require.True(t, ok, "first count should be float64 pointer")
+				assert.Equal(t, float64(4609), *countValue, "first count should be 4609")
+
+				t.Logf("Created frame with %d fields for topk data", len(frame.Fields))
+			},
+		},
 	}
 
 	for _, test := range tests {

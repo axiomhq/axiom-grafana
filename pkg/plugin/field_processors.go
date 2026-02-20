@@ -17,18 +17,26 @@ type FieldProcessor interface {
 	ProcessColumn(col []any) ([]*data.Field, error)
 }
 
-// isHistogramField checks if a field is a histogram aggregation field
+// Field type detection functions
 func isHistogramField(field axiQuery.Field) bool {
 	// Check if field has Aggregation metadata indicating histogram
 	return field.Aggregation != nil && field.Aggregation.Op == axiQuery.OpHistogram
 }
 
+func isTopkField(field axiQuery.Field) bool {
+	return field.Aggregation != nil && field.Aggregation.Op == axiQuery.OpTopk
+}
+
 // NewFieldProcessor creates the appropriate processor for the given field
 func NewFieldProcessor(logger log.Logger, fieldDef axiQuery.Field) FieldProcessor {
-	if isHistogramField(fieldDef) {
+	switch {
+	case isHistogramField(fieldDef):
 		return &HistogramFieldProcessor{fieldDef: fieldDef}
-	}
+	case isTopkField(fieldDef):
+		return &TopkFieldProcessor{fieldDef: fieldDef}
+	default:
 	return &RegularFieldProcessor{logger: logger, fieldDef: fieldDef}
+	}
 }
 
 // RegularFieldProcessor handles standard field types (string, int, float, etc.)
@@ -176,3 +184,96 @@ func (p *HistogramFieldProcessor) ProcessColumn(col []any) ([]*data.Field, error
 
 	return bucketFields, nil
 }
+
+// TopkFieldProcessor handles topk aggregation fields
+type TopkFieldProcessor struct {
+	fieldDef axiQuery.Field
+}
+
+// ProcessColumn processes a topk field column
+func (p *TopkFieldProcessor) ProcessColumn(col []any) ([]*data.Field, error) {
+	// Create separate fields for key, count, and error
+	keyField := data.NewField("key", nil, []*string{})
+	countField := data.NewField("count", nil, []*float64{})
+	errorField := data.NewField("error", nil, []*float64{})
+
+	for _, cellValue := range col {
+		if cellValue == nil {
+			// Append nil values to maintain row alignment with other fields
+			keyField.Append((*string)(nil))
+			countField.Append((*float64)(nil))
+			errorField.Append((*float64)(nil))
+			continue
+		}
+
+		topkArray, ok := cellValue.([]any)
+		if !ok {
+			return nil, fmt.Errorf("expected topk array but got %T", cellValue)
+		}
+
+				// Process each topk entry
+				for _, entry := range topkArray {
+			entryMap, ok := entry.(map[string]any)
+			if !ok {
+				// Append nil values for malformed entries to maintain structure
+				keyField.Append((*string)(nil))
+				countField.Append((*float64)(nil))
+				errorField.Append((*float64)(nil))
+				continue
+			}
+
+						// Extract key
+						if key, exists := entryMap["key"]; exists {
+							if keyStr, ok := key.(string); ok {
+								keyField.Append(&keyStr)
+							} else {
+								keyStr := fmt.Sprintf("%v", key)
+								keyField.Append(&keyStr)
+							}
+						} else {
+							keyField.Append((*string)(nil))
+						}
+
+						// Extract count
+						if count, exists := entryMap["count"]; exists {
+							if countFloat, ok := count.(float64); ok {
+								countField.Append(&countFloat)
+							} else {
+								countField.Append((*float64)(nil))
+							}
+						} else {
+							countField.Append((*float64)(nil))
+						}
+
+						// Extract error
+						if errVal, exists := entryMap["error"]; exists {
+							if errFloat, ok := errVal.(float64); ok {
+								errorField.Append(&errFloat)
+							} else {
+								errorField.Append((*float64)(nil))
+							}
+						} else {
+							errorField.Append((*float64)(nil))
+						}
+					}
+				}
+
+	return []*data.Field{keyField, countField, errorField}, nil
+}
+			} else {
+				// Single row with nil values
+				keyField.Append((*string)(nil))
+				countField.Append((*float64)(nil))
+				errorField.Append((*float64)(nil))
+			}
+		} else {
+			// Single row with nil values
+			keyField.Append((*string)(nil))
+			countField.Append((*float64)(nil))
+			errorField.Append((*float64)(nil))
+		}
+	}
+
+	return []*data.Field{keyField, countField, errorField}, nil
+}
+
