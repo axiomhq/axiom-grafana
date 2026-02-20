@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/grafana/grafana-plugin-sdk-go/data"
@@ -132,6 +133,55 @@ func TestBuildFrame(t *testing.T) {
 				assert.Equal(t, float64(4609), *countValue, "first count should be 4609")
 
 				t.Logf("Created frame with %d fields for topk data", len(frame.Fields))
+			},
+		},
+		{
+			name:        "single_percentile_query",
+			aplResponse: `{"format":"tabular","status":{"elapsedTime":616319,"blocksExamined":8,"blocksCached":5,"blocksMatched":0,"blocksSkipped":0,"rowsExamined":2507696,"rowsMatched":699773,"numGroups":0,"isPartial":false,"cacheStatus":5,"minBlockTime":"2026-02-20T14:07:55Z","maxBlockTime":"2026-02-20T15:45:29Z"},"tables":[{"name":"0","sources":[{"name":"sample-http-logs"}],"fields":[{"name":"percentile_req_duration_ms_95","type":"float","agg":{"name":"percentiles","fields":["req_duration_ms"],"args":[95]}}],"order":[],"groups":[],"range":{"field":"_time","start":"2026-02-20T15:15:31Z","end":"2026-02-20T15:45:31Z"},"columns":[[1.981381285354422]]}],"datasetNames":["sample-http-logs"],"fieldsMetaMap":{"sample-http-logs":[{"name":"req_duration_ms","type":"integer|float","unit":"ms","hidden":false,"description":""},{"name":"resp_body_size_bytes","type":"integer","unit":"decmbytes","hidden":false,"description":""},{"name":"resp_header_size_bytes","type":"integer","unit":"Kbits","hidden":false,"description":""}]}}`,
+			assertions: func(t *testing.T, frame *data.Frame) {
+				// Should have 1 field for single percentile
+				require.Len(t, frame.Fields, 1, "should have 1 field for single percentile")
+
+				percentileField := frame.Fields[0]
+				assert.Equal(t, "percentile_req_duration_ms_95", percentileField.Name, "field should have correct name")
+				assert.Equal(t, data.FieldTypeNullableFloat64, percentileField.Type(), "percentile field should be nullable float64")
+
+				// Should have 1 data row
+				assert.Equal(t, 1, percentileField.Len(), "should have 1 percentile value")
+
+				// Check the specific value from the test data
+				percentileValue, ok := percentileField.At(0).(*float64)
+				require.True(t, ok, "percentile should be float64 pointer")
+				assert.InDelta(t, 1.981381285354422, *percentileValue, 0.000001, "percentile value should match")
+
+				t.Logf("Created frame with 1 field for single percentile")
+			},
+		},
+		{
+			name:        "percentiles_array_query",
+			aplResponse: `{"format":"tabular","status":{"elapsedTime":474729,"blocksExamined":8,"blocksCached":0,"blocksMatched":0,"blocksSkipped":0,"rowsExamined":2542696,"rowsMatched":692164,"numGroups":0,"isPartial":false,"cacheStatus":1,"minBlockTime":"2026-02-20T14:07:55Z","maxBlockTime":"2026-02-20T15:47:01Z"},"tables":[{"name":"0","sources":[{"name":"sample-http-logs"}],"fields":[{"name":"percentiles_req_duration_ms","type":"array","agg":{"name":"percentiles","fields":["req_duration_ms"],"args":[50,80,90,95,99]}}],"order":[],"groups":[],"range":{"field":"_time","start":"2026-02-20T15:17:01Z","end":"2026-02-20T15:47:01Z"},"columns":[[[0.73523926552764,1.33199757697258,1.6908607409779908,1.981381285354422,2.6120405204484882]]]}],"datasetNames":["sample-http-logs"],"fieldsMetaMap":{"sample-http-logs":[{"name":"req_duration_ms","type":"integer|float","unit":"ms","hidden":false,"description":""},{"name":"resp_body_size_bytes","type":"integer","unit":"decmbytes","hidden":false,"description":""},{"name":"resp_header_size_bytes","type":"integer","unit":"Kbits","hidden":false,"description":""}]}}`,
+			assertions: func(t *testing.T, frame *data.Frame) {
+				// Should have 5 fields for percentiles array (50, 80, 90, 95, 99)
+				require.Len(t, frame.Fields, 5, "should have 5 fields for percentiles array")
+
+				// Check field names and types
+				expectedValues := []float64{0.73523926552764, 1.33199757697258, 1.6908607409779908, 1.981381285354422, 2.6120405204484882}
+				for i := range 5 {
+					field := frame.Fields[i]
+					expectedName := fmt.Sprintf("percentile_%d", i)
+					assert.Equal(t, expectedName, field.Name, fmt.Sprintf("field %d should have correct name", i))
+					assert.Equal(t, data.FieldTypeNullableFloat64, field.Type(), fmt.Sprintf("percentile field %d should be nullable float64", i))
+
+					// Should have 1 data row
+					assert.Equal(t, 1, field.Len(), fmt.Sprintf("field %d should have 1 percentile value", i))
+
+					// Check the specific value from the test data
+					percentileValue, ok := field.At(0).(*float64)
+					require.True(t, ok, fmt.Sprintf("percentile %d should be float64 pointer", i))
+					assert.InDelta(t, expectedValues[i], *percentileValue, 0.000001, fmt.Sprintf("percentile %d value should match", i))
+				}
+
+				t.Logf("Created frame with %d fields for percentiles array", len(frame.Fields))
 			},
 		},
 	}

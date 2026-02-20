@@ -19,12 +19,15 @@ type FieldProcessor interface {
 
 // Field type detection functions
 func isHistogramField(field axiQuery.Field) bool {
-	// Check if field has Aggregation metadata indicating histogram
 	return field.Aggregation != nil && field.Aggregation.Op == axiQuery.OpHistogram
 }
 
 func isTopkField(field axiQuery.Field) bool {
 	return field.Aggregation != nil && field.Aggregation.Op == axiQuery.OpTopk
+}
+
+func isPercentilesField(field axiQuery.Field) bool {
+	return field.Aggregation != nil && field.Aggregation.Op == axiQuery.OpPercentiles && field.Type == "array"
 }
 
 // NewFieldProcessor creates the appropriate processor for the given field
@@ -34,8 +37,10 @@ func NewFieldProcessor(logger log.Logger, fieldDef axiQuery.Field) FieldProcesso
 		return &HistogramFieldProcessor{fieldDef: fieldDef}
 	case isTopkField(fieldDef):
 		return &TopkFieldProcessor{fieldDef: fieldDef}
+	case isPercentilesField(fieldDef):
+		return &PercentilesFieldProcessor{fieldDef: fieldDef}
 	default:
-	return &RegularFieldProcessor{logger: logger, fieldDef: fieldDef}
+		return &RegularFieldProcessor{logger: logger, fieldDef: fieldDef}
 	}
 }
 
@@ -211,8 +216,8 @@ func (p *TopkFieldProcessor) ProcessColumn(col []any) ([]*data.Field, error) {
 			return nil, fmt.Errorf("expected topk array but got %T", cellValue)
 		}
 
-				// Process each topk entry
-				for _, entry := range topkArray {
+		// Process each topk entry
+		for _, entry := range topkArray {
 			entryMap, ok := entry.(map[string]any)
 			if !ok {
 				// Append nil values for malformed entries to maintain structure
@@ -222,58 +227,101 @@ func (p *TopkFieldProcessor) ProcessColumn(col []any) ([]*data.Field, error) {
 				continue
 			}
 
-						// Extract key
-						if key, exists := entryMap["key"]; exists {
-							if keyStr, ok := key.(string); ok {
-								keyField.Append(&keyStr)
-							} else {
-								keyStr := fmt.Sprintf("%v", key)
-								keyField.Append(&keyStr)
-							}
-						} else {
-							keyField.Append((*string)(nil))
-						}
-
-						// Extract count
-						if count, exists := entryMap["count"]; exists {
-							if countFloat, ok := count.(float64); ok {
-								countField.Append(&countFloat)
-							} else {
-								countField.Append((*float64)(nil))
-							}
-						} else {
-							countField.Append((*float64)(nil))
-						}
-
-						// Extract error
-						if errVal, exists := entryMap["error"]; exists {
-							if errFloat, ok := errVal.(float64); ok {
-								errorField.Append(&errFloat)
-							} else {
-								errorField.Append((*float64)(nil))
-							}
-						} else {
-							errorField.Append((*float64)(nil))
-						}
-					}
+			// Extract key
+			if key, exists := entryMap["key"]; exists {
+				if keyStr, ok := key.(string); ok {
+					keyField.Append(&keyStr)
+				} else {
+					keyStr := fmt.Sprintf("%v", key)
+					keyField.Append(&keyStr)
 				}
-
-	return []*data.Field{keyField, countField, errorField}, nil
-}
 			} else {
-				// Single row with nil values
 				keyField.Append((*string)(nil))
+			}
+
+			// Extract count
+			if count, exists := entryMap["count"]; exists {
+				if countFloat, ok := count.(float64); ok {
+					countField.Append(&countFloat)
+				} else {
+					countField.Append((*float64)(nil))
+				}
+			} else {
 				countField.Append((*float64)(nil))
+			}
+
+			// Extract error
+			if errVal, exists := entryMap["error"]; exists {
+				if errFloat, ok := errVal.(float64); ok {
+					errorField.Append(&errFloat)
+				} else {
+					errorField.Append((*float64)(nil))
+				}
+			} else {
 				errorField.Append((*float64)(nil))
 			}
-		} else {
-			// Single row with nil values
-			keyField.Append((*string)(nil))
-			countField.Append((*float64)(nil))
-			errorField.Append((*float64)(nil))
 		}
 	}
 
 	return []*data.Field{keyField, countField, errorField}, nil
 }
 
+// PercentilesFieldProcessor handles percentiles aggregation fields
+type PercentilesFieldProcessor struct {
+	fieldDef axiQuery.Field
+}
+
+// ProcessColumn processes a percentiles field column
+func (p *PercentilesFieldProcessor) ProcessColumn(col []any) ([]*data.Field, error) {
+	// Determine number of percentiles by examining first non-nil value
+	var numPercentiles int
+	for _, cellValue := range col {
+		if cellValue != nil {
+			if percArray, ok := cellValue.([]any); ok {
+				numPercentiles = len(percArray)
+				break
+			}
+		}
+	}
+
+	// Create fields for each percentile
+	percentileFields := make([]*data.Field, numPercentiles)
+	for i := range numPercentiles {
+		// Use generic names since we don't know the actual percentile values
+		fieldName := fmt.Sprintf("percentile_%d", i)
+		percentileFields[i] = data.NewField(fieldName, nil, []*float64{})
+	}
+
+	// Populate percentile fields
+	for _, cellValue := range col {
+		if cellValue == nil {
+			// Fill all fields with nil for nil values
+			for i := range percentileFields {
+				percentileFields[i].Append((*float64)(nil))
+			}
+			continue
+		}
+
+		percArray, ok := cellValue.([]any)
+		if !ok {
+			return nil, fmt.Errorf("expected percentiles array but got %T", cellValue)
+		}
+
+		// Fill each percentile field
+		for i, percValue := range percArray {
+			if i < len(percentileFields) {
+				if percFloat, ok := percValue.(float64); ok {
+					percentileFields[i].Append(&percFloat)
+				} else {
+					percentileFields[i].Append((*float64)(nil))
+				}
+			}
+		}
+		// Fill remaining fields with nil if array is shorter
+		for i := len(percArray); i < len(percentileFields); i++ {
+			percentileFields[i].Append((*float64)(nil))
+		}
+	}
+
+	return percentileFields, nil
+}
