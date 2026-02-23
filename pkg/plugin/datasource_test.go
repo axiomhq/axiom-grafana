@@ -38,74 +38,63 @@ func TestBuildQueryEndpoint(t *testing.T) {
 	tests := []struct {
 		name     string
 		apiHost  string
-		region   string
+		edge     string
+		edgeURL  string
 		expected string
 	}{
 		{
-			name:     "no region - uses apiHost with path appended",
+			name:     "no edge - uses apiHost with legacy path",
 			apiHost:  "https://api.axiom.co",
-			region:   "",
 			expected: "https://api.axiom.co/v1/datasets/_apl",
 		},
 		{
-			name:     "region set - uses edge endpoint",
+			name:     "edge domain - uses edge query path",
 			apiHost:  "https://api.axiom.co",
-			region:   "eu-central-1.aws.edge.axiom.co",
-			expected: "https://eu-central-1.aws.edge.axiom.co/v1/datasets/_apl?format=tabular",
+			edge:     "eu-central-1.aws.edge.axiom.co",
+			expected: "https://eu-central-1.aws.edge.axiom.co/v1/query/_apl",
 		},
 		{
-			name:     "region with https scheme",
+			name:     "edge domain with trailing slash",
 			apiHost:  "https://api.axiom.co",
-			region:   "https://eu-central-1.aws.edge.axiom.co",
-			expected: "https://eu-central-1.aws.edge.axiom.co/v1/datasets/_apl?format=tabular",
+			edge:     "us-east-1.aws.edge.axiom.co/",
+			expected: "https://us-east-1.aws.edge.axiom.co/v1/query/_apl",
 		},
 		{
-			name:     "region with trailing slash",
+			name:     "edgeURL without path - appends edge query path",
 			apiHost:  "https://api.axiom.co",
-			region:   "us-east-1.aws.edge.axiom.co/",
-			expected: "https://us-east-1.aws.edge.axiom.co/v1/datasets/_apl?format=tabular",
+			edgeURL:  "https://eu-central-1.aws.edge.axiom.co",
+			expected: "https://eu-central-1.aws.edge.axiom.co/v1/query/_apl",
 		},
 		{
-			name:     "legacy EU instance - no region",
+			name:     "edgeURL with trailing slash",
+			apiHost:  "https://api.axiom.co",
+			edgeURL:  "https://eu-central-1.aws.edge.axiom.co/",
+			expected: "https://eu-central-1.aws.edge.axiom.co/v1/query/_apl",
+		},
+		{
+			name:     "edgeURL with custom path - used as-is",
+			edgeURL:  "http://localhost:3400/query",
+			expected: "http://localhost:3400/query",
+		},
+		{
+			name:     "edgeURL takes precedence over edge domain",
+			edgeURL:  "https://primary.edge.axiom.co",
+			edge:     "secondary.edge.axiom.co",
+			expected: "https://primary.edge.axiom.co/v1/query/_apl",
+		},
+		{
+			name:     "legacy EU instance - no edge",
 			apiHost:  "https://api.eu.axiom.co",
-			region:   "",
 			expected: "https://api.eu.axiom.co/v1/datasets/_apl",
 		},
 		{
-			name:     "staging edge region",
-			apiHost:  "https://api.axiom.co",
-			region:   "us-east-1.edge.staging.axiomdomain.co",
-			expected: "https://us-east-1.edge.staging.axiomdomain.co/v1/datasets/_apl?format=tabular",
+			name:     "staging edge domain",
+			edge:     "us-east-1.edge.staging.axiomdomain.co",
+			expected: "https://us-east-1.edge.staging.axiomdomain.co/v1/query/_apl",
 		},
 		{
-			name:     "apiHost with custom path - used as-is, takes precedence over region",
-			apiHost:  "http://localhost:3400/v1/datasets/_apl",
-			region:   "eu-central-1.aws.edge.axiom.co",
-			expected: "http://localhost:3400/v1/datasets/_apl",
-		},
-		{
-			name:     "apiHost with custom path - no region",
-			apiHost:  "http://localhost:8080/custom/query/path",
-			region:   "",
-			expected: "http://localhost:8080/custom/query/path",
-		},
-		{
-			name:     "apiHost with trailing slash - appends query path",
-			apiHost:  "https://api.axiom.co/",
-			region:   "",
+			name:     "no apiHost, no edge - uses default cloud endpoint",
 			expected: "https://api.axiom.co/v1/datasets/_apl",
-		},
-		{
-			name:     "no apiHost, no region - uses default cloud endpoint",
-			apiHost:  "",
-			region:   "",
-			expected: "https://api.axiom.co/v1/datasets/_apl",
-		},
-		{
-			name:     "no apiHost, region set - uses region",
-			apiHost:  "",
-			region:   "eu-central-1.aws.edge.axiom.co",
-			expected: "https://eu-central-1.aws.edge.axiom.co/v1/datasets/_apl?format=tabular",
 		},
 	}
 
@@ -114,7 +103,8 @@ func TestBuildQueryEndpoint(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			ds := Datasource{
 				apiHost: test.apiHost,
-				region:  test.region,
+				edge:    test.edge,
+				edgeURL: test.edgeURL,
 			}
 
 			endpoint, err := ds.buildQueryEndpoint()

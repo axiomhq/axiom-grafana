@@ -19,10 +19,18 @@ export function ConfigEditor(props: Props) {
     onOptionsChange({ ...options, jsonData });
   };
 
-  const onRegionChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const onEdgeChange = (event: ChangeEvent<HTMLInputElement>) => {
     const jsonData = {
       ...options.jsonData,
-      region: event.target.value,
+      edge: event.target.value,
+    };
+    onOptionsChange({ ...options, jsonData });
+  };
+
+  const onEdgeURLChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const jsonData = {
+      ...options.jsonData,
+      edgeURL: event.target.value,
     };
     onOptionsChange({ ...options, jsonData });
   };
@@ -117,14 +125,22 @@ export function ConfigEditor(props: Props) {
         </InlineField>
       </div>
       <div>
-        <Label description="Optional regional edge domain for queries. When set, queries are routed to this edge. Leave empty to use the API host for queries.">
-          <h6>Edge Region (Optional)</h6>
+        <Label description="Optional edge configuration for data locality. Set the regional edge domain or an explicit edge URL. Edge URL takes precedence if both are set.">
+          <h6>Edge (Optional)</h6>
         </Label>
-        <InlineField label="Region" labelWidth={17}>
+        <InlineField label="Edge" labelWidth={17} tooltip="Regional edge domain (e.g., eu-central-1.aws.edge.axiom.co). Queries route to https://{edge}/v1/query/_apl.">
           <Input
-            onChange={onRegionChange}
-            value={jsonData.region || ''}
+            onChange={onEdgeChange}
+            value={jsonData.edge || ''}
             placeholder="e.g., eu-central-1.aws.edge.axiom.co"
+            width={40}
+          />
+        </InlineField>
+        <InlineField label="Edge URL" labelWidth={17} tooltip="Explicit edge URL. If a path is provided, it is used as-is. Takes precedence over Edge domain.">
+          <Input
+            onChange={onEdgeURLChange}
+            value={jsonData.edgeURL || ''}
+            placeholder="e.g., https://custom-edge.example.com"
             width={40}
           />
         </InlineField>

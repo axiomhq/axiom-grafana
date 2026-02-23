@@ -66,69 +66,62 @@ type EdgeQueryResponse struct {
 }
 
 // buildQueryEndpoint returns the query endpoint URL.
-// Priority: apiHost (with path detection) > region > default cloud endpoint
+// Priority: edgeURL > edge > apiHost (for non-edge queries)
 //
-// If apiHost has a custom path, it's used as-is.
-// If apiHost has no path (or only "/"), the query path is appended for backwards compatibility.
-// If region is set (and apiHost has no custom path), use the edge endpoint.
+// Edge query path: /v1/query/_apl
+// Non-edge query path: /v1/datasets/_apl (legacy, via apiHost)
+//
+// If edgeURL has a custom path, it's used as-is.
+// If edgeURL has no path (or only "/"), /v1/query/_apl is appended.
+// If edge is set (domain only), builds https://{edge}/v1/query/_apl.
 func (d *Datasource) buildQueryEndpoint() (string, error) {
-	// If apiHost is set, check if it has a custom path
-	if d.apiHost != "" {
-		host := strings.TrimSuffix(d.apiHost, "/")
+	// Priority 1: edgeURL takes precedence
+	if d.edgeURL != "" {
+		edgeURL := strings.TrimSuffix(d.edgeURL, "/")
 
-		// Parse URL to check if path is provided
-		parsed, err := url.Parse(host)
+		parsed, err := url.Parse(edgeURL)
 		if err != nil {
-			return "", fmt.Errorf("failed to parse apiHost: %w", err)
+			return "", fmt.Errorf("failed to parse edgeURL: %w", err)
 		}
 
 		path := parsed.Path
-		// If path is empty or just "/", we need to append the query path
 		if path == "" || path == "/" {
-			// Check if region is set - if so, use region for queries
-			if d.region != "" {
-				region := strings.TrimSuffix(d.region, "/")
-				// Ensure we have a proper URL with scheme
-				if !strings.HasPrefix(region, "http://") && !strings.HasPrefix(region, "https://") {
-					region = "https://" + region
-				}
-				return fmt.Sprintf("%s/v1/datasets/_apl?format=tabular", region), nil
-			}
-			// No region, append query path to apiHost for backwards compatibility
-			return fmt.Sprintf("%s/v1/datasets/_apl", host), nil
+			// No custom path, append edge query path
+			return fmt.Sprintf("%s/v1/query/_apl", edgeURL), nil
 		}
 
-		// apiHost has a custom path, use as-is (apiHost takes precedence)
-		return host, nil
+		// edgeURL has a custom path, use as-is
+		return edgeURL, nil
 	}
 
-	// No apiHost set, check for region
-	if d.region != "" {
-		region := strings.TrimSuffix(d.region, "/")
-		if !strings.HasPrefix(region, "http://") && !strings.HasPrefix(region, "https://") {
-			region = "https://" + region
-		}
-		return fmt.Sprintf("%s/v1/datasets/_apl?format=tabular", region), nil
+	// Priority 2: edge domain
+	if d.edge != "" {
+		edge := strings.TrimSuffix(d.edge, "/")
+		return fmt.Sprintf("https://%s/v1/query/_apl", edge), nil
 	}
 
-	// Default: use cloud endpoint
+	// Default: use apiHost with legacy query path
+	if d.apiHost != "" {
+		host := strings.TrimSuffix(d.apiHost, "/")
+		return fmt.Sprintf("%s/v1/datasets/_apl", host), nil
+	}
+
 	return "https://api.axiom.co/v1/datasets/_apl", nil
 }
 
-// QueryEdge executes an APL query against the edge endpoint.
+// QueryEdge executes an APL query against the configured endpoint
+// (edge or legacy apiHost, depending on configuration).
 func (d *Datasource) QueryEdge(ctx context.Context, apl string, startTime, endTime time.Time) (*query.Result, error) {
 	endpoint, err := d.buildQueryEndpoint()
 	if err != nil {
 		return nil, err
 	}
 
-	// Add format=tabular query param if not already present (for apiHost fallback)
-	if !strings.Contains(endpoint, "format=") {
-		if strings.Contains(endpoint, "?") {
-			endpoint += "&format=tabular"
-		} else {
-			endpoint += "?format=tabular"
-		}
+	// Add format=tabular query param
+	if strings.Contains(endpoint, "?") {
+		endpoint += "&format=tabular"
+	} else {
+		endpoint += "?format=tabular"
 	}
 
 	reqBody := EdgeQueryRequest{

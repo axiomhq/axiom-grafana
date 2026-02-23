@@ -49,7 +49,8 @@ func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSetti
 		host = apiHost.(string)
 	}
 
-	region := checkString(data["region"])
+	edge := checkString(data["edge"])
+	edgeURL := checkString(data["edgeURL"])
 
 	orgID := checkString(data["orgID"])
 
@@ -67,7 +68,8 @@ func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSetti
 	ds := &Datasource{
 		client:  client,
 		apiHost: host,
-		region:  region,
+		edge:    edge,
+		edgeURL: edgeURL,
 	}
 	resourceHandler := ds.newResourceHandler()
 	ds.CallResourceHandler = resourceHandler
@@ -82,7 +84,8 @@ func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSetti
 type Datasource struct {
 	backend.CallResourceHandler
 	apiHost string
-	region  string // Optional regional edge domain for queries
+	edge    string // Optional regional edge domain (e.g., "eu-central-1.aws.edge.axiom.co")
+	edgeURL string // Optional explicit edge URL (takes precedence over edge)
 	client  *axiom.Client
 }
 

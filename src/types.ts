@@ -19,11 +19,20 @@ export interface AxiomDataSourceOptions extends DataSourceJsonData {
   apiHost: string;
   orgID: string;
   /**
-   * Optional regional edge domain for queries (e.g., "eu-central-1.aws.edge.axiom.co").
-   * When set, queries are routed to https://{region}/v1/datasets/_apl.
+   * Optional regional edge domain for ingest and query operations
+   * (e.g., "eu-central-1.aws.edge.axiom.co").
+   * When set, queries are routed to https://{edge}/v1/query/_apl.
    * All other API calls (schema lookup, health checks) continue to use apiHost.
    */
-  region?: string;
+  edge?: string;
+  /**
+   * Optional explicit edge URL for ingest and query operations
+   * (e.g., "https://custom-edge.example.com").
+   * If a path is provided, the URL is used as-is.
+   * If no path is provided, /v1/query/_apl is appended.
+   * Takes precedence over edge if both are set.
+   */
+  edgeURL?: string;
 }
 
 /**
