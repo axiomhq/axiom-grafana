@@ -19,6 +19,22 @@ export function ConfigEditor(props: Props) {
     onOptionsChange({ ...options, jsonData });
   };
 
+  const onEdgeChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const jsonData = {
+      ...options.jsonData,
+      edge: event.target.value,
+    };
+    onOptionsChange({ ...options, jsonData });
+  };
+
+  const onEdgeURLChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const jsonData = {
+      ...options.jsonData,
+      edgeURL: event.target.value,
+    };
+    onOptionsChange({ ...options, jsonData });
+  };
+
   // Secure field (only sent to the backend)
   const onAccessTokenChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.value.startsWith('xapt-')) {
@@ -96,14 +112,35 @@ export function ConfigEditor(props: Props) {
         </div>
       )}
       <div>
-        <Label description="The Axiom host to use.">
-          <h6>Axiom Host</h6>
+        <Label description="The Axiom API host for management operations (schema lookup, health checks).">
+          <h6>Axiom API Host</h6>
         </Label>
         <InlineField label="URL" labelWidth={17}>
           <Input
             onChange={onHostChange}
             value={jsonData.apiHost || 'https://api.axiom.co'}
             placeholder="Axiom API host URL"
+            width={40}
+          />
+        </InlineField>
+      </div>
+      <div>
+        <Label description="Optional edge configuration for data locality. Set the regional edge domain or an explicit edge URL. Edge URL takes precedence if both are set.">
+          <h6>Edge (Optional)</h6>
+        </Label>
+        <InlineField label="Edge" labelWidth={17} tooltip="Regional edge domain (e.g., eu-central-1.aws.edge.axiom.co). Queries route to https://{edge}/v1/query/_apl.">
+          <Input
+            onChange={onEdgeChange}
+            value={jsonData.edge || ''}
+            placeholder="e.g., eu-central-1.aws.edge.axiom.co"
+            width={40}
+          />
+        </InlineField>
+        <InlineField label="Edge URL" labelWidth={17} tooltip="Explicit edge URL. If a path is provided, it is used as-is. Takes precedence over Edge domain.">
+          <Input
+            onChange={onEdgeURLChange}
+            value={jsonData.edgeURL || ''}
+            placeholder="e.g., https://custom-edge.example.com"
             width={40}
           />
         </InlineField>

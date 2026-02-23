@@ -49,6 +49,9 @@ func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSetti
 		host = apiHost.(string)
 	}
 
+	edge := checkString(data["edge"])
+	edgeURL := checkString(data["edgeURL"])
+
 	orgID := checkString(data["orgID"])
 
 	client, err := axiom.NewClient(
@@ -65,6 +68,8 @@ func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSetti
 	ds := &Datasource{
 		client:  client,
 		apiHost: host,
+		edge:    edge,
+		edgeURL: edgeURL,
 	}
 	resourceHandler := ds.newResourceHandler()
 	ds.CallResourceHandler = resourceHandler
@@ -79,6 +84,8 @@ func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSetti
 type Datasource struct {
 	backend.CallResourceHandler
 	apiHost string
+	edge    string // Optional regional edge domain (e.g., "eu-central-1.aws.edge.axiom.co")
+	edgeURL string // Optional explicit edge URL (takes precedence over edge)
 	client  *axiom.Client
 }
 
@@ -150,7 +157,8 @@ func (d *Datasource) query(ctx context.Context, query concurrent.Query) backend.
 	}
 
 	// make request to axiom
-	result, err := d.client.Query(ctx, qm.APL, axiQuery.SetStartTime(query.DataQuery.TimeRange.From), axiQuery.SetEndTime(query.DataQuery.TimeRange.To))
+	// Use custom query method that handles edge endpoints and smart URL detection
+	result, err := d.QueryEdge(ctx, qm.APL, query.DataQuery.TimeRange.From, query.DataQuery.TimeRange.To)
 	if err != nil {
 		logger.Error("failed to query axiom", "error", err)
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("axiom error: %v", err.Error()))
