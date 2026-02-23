@@ -76,6 +76,11 @@ jobs:
           mv dist ${{ steps.metadata.outputs.plugin-id }}
           zip ${{ steps.metadata.outputs.archive }} ${{ steps.metadata.outputs.plugin-id }} -r
 
+      - name: Generate provenance attestation
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: ${{ steps.metadata.outputs.archive }}
+
       - name: Verify signature (plugin-validator)
         if: ${{ env.GRAFANA_ACCESS_POLICY_TOKEN != '' }}
         run: |
@@ -83,11 +88,23 @@ jobs:
 
       - name: Generate checksums
         run: |
+          sha1sum ${{ steps.metadata.outputs.archive }} > ${{ steps.metadata.outputs.archive }}.sha1
           sha256sum ${{ steps.metadata.outputs.archive }} > ${{ steps.metadata.outputs.archive }}.sha256
+
+      - name: Prepare release notes
+        id: release-notes
+        run: |
+          SHA1=$(cut -d' ' -f1 ${{ steps.metadata.outputs.archive }}.sha1)
+          {
+            echo "SHA1: ${SHA1}"
+            echo ""
+          } > release_notes.txt
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          body_path: release_notes.txt
           files: |
             ${{ steps.metadata.outputs.archive }}
+            ${{ steps.metadata.outputs.archive }}.sha1
             ${{ steps.metadata.outputs.archive }}.sha256
