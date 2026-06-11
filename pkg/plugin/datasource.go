@@ -3,12 +3,10 @@ package plugin
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"net/http"
 	"runtime/debug"
+	"time"
 
-	"github.com/axiomhq/axiom-go/axiom"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
@@ -26,6 +24,13 @@ var (
 	_ instancemgmt.InstanceDisposer = (*Datasource)(nil)
 	_ backend.CallResourceHandler   = (*Datasource)(nil)
 )
+
+// Datasource is an example datasource which can respond to data queries, reports
+// its health and has streaming skills.
+type Datasource struct {
+	backend.CallResourceHandler
+	api *AxiomAPI
+}
 
 type queryModel struct {
 	APL    *string `json:"apl"`
@@ -57,7 +62,7 @@ func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSetti
 	edge := checkString(data["edge"])
 	edgeURL := checkString(data["edgeURL"])
 
-	baseUrl, err := resolveBaseUrl(urlInput{
+	resolvedEdgeURL, err := resolveBaseUrl(urlInput{
 		EdgeURL: edgeURL,
 		Edge:    edge,
 		APIHost: host,
@@ -66,31 +71,15 @@ func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSetti
 		logger.Error("failed to resolve correct axiom api/edge url", "error", err)
 		return nil, err
 	}
-	client := newClient(baseUrl, accessToken)
+	api := NewAPIClient(host, resolvedEdgeURL, accessToken)
 
 	ds := &Datasource{
-		api: &AxiomAPI{
-			apiHost: baseUrl,
-			client:  client,
-		},
-		apiHost: host,
-		edge:    edge,
-		edgeURL: edgeURL,
+		api: api,
 	}
 	resourceHandler := ds.newResourceHandler()
 	ds.CallResourceHandler = resourceHandler
 
 	return ds, nil
-}
-
-// Datasource is an example datasource which can respond to data queries, reports
-// its health and has streaming skills.
-type Datasource struct {
-	backend.CallResourceHandler
-	apiHost string
-	edge    string // Optional regional edge domain (e.g., "eu-central-1.aws.edge.axiom.co")
-	edgeURL string // Optional explicit edge URL (takes precedence over edge)
-	api     *AxiomAPI
 }
 
 // Dispose here tells plugin SDK that plugin wants to clean up resources when a new instance
@@ -181,12 +170,34 @@ func (d *Datasource) execQuery(ctx context.Context, query concurrent.Query) (res
 	return *queryResponse
 }
 
+// queryMetrics executes an MPL query against the configured edge endpoint
+func (d *Datasource) queryMetrics(ctx context.Context, q *queryModel, refID string, startTime, endTime time.Time) (*backend.DataResponse, error) {
+	reqBody := MPLQueryRequest{
+		MPL:       q.Query,
+		StartTime: startTime,
+		EndTime:   endTime,
+	}
+
+	res, err := d.api.queryMetrics(ctx, reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	var response backend.DataResponse
+
+	for _, group := range res.Series {
+		response.Frames = append(response.Frames, buildMetricsFrame(group, res.Metadata, refID))
+	}
+
+	// extract the data from the response
+	return &response, nil
+}
+
 // CheckHealth handles health checks sent from Grafana to the plugin.
 // The main use case for these health checks is the test button on the
 // datasource configuration page which allows users to verify that
 // a datasource is working as expected.
 func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
-	logger := log.DefaultLogger.FromContext(ctx)
 	// first try to validate the credentials
 	// err := d.client.ValidateCredentials(ctx)
 	// if err != nil {
@@ -202,28 +213,17 @@ func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRe
 	// validate that we get HTTP 400, this gives high confidence
 	// that we got past network and authentication issues and looked at our request
 	// it also should be somewhat inexpensive for the server
-	var axiErr axiom.HTTPError
-	var msg = "Did not receive expected error"
-	r, err := http.NewRequest(http.MethodPost, "/v1/query/_apl", nil)
-	_, err = d.api.client.http.Do(r)
-	// _, err = d.client.Query(ctx, "")
-	if err != nil && errors.As(err, &axiErr) {
-		if axiErr.Status == 400 {
-			// expected 400 for empty query, HEALTHY
-			return &backend.CheckHealthResult{
-				Status:  backend.HealthStatusOk,
-				Message: "Data source is working",
-			}, nil
-		}
-	}
-
+	// var msg = "Did not receive expected error"
+	err := d.api.CheckHealth(ctx)
 	if err != nil {
-		logger.Error("Failed to query Axiom", "error", err)
-		msg = "Failed to query Axiom"
+		return &backend.CheckHealthResult{
+			Status:  backend.HealthStatusError,
+			Message: err.Error(),
+		}, nil
 	}
-
 	return &backend.CheckHealthResult{
-		Status:  backend.HealthStatusError,
-		Message: msg,
+		Status:  backend.HealthStatusOk,
+		Message: "OK",
 	}, nil
+
 }

@@ -3,93 +3,28 @@ package plugin
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/axiomhq/axiom-go/axiom/query"
 	axiQuery "github.com/axiomhq/axiom-go/axiom/query"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 )
 
-// APLQueryRequest represents the APL query request for edge endpoints.
-type APLQueryRequest struct {
-	APL       *string   `json:"apl"`
-	MPL       *string   `json:"mpl"`
-	StartTime time.Time `json:"startTime"`
-	EndTime   time.Time `json:"endTime"`
-}
-
-// APLQueryResponse represents the tabular query response from edge endpoints.
-type APLQueryResponse struct {
-	Format        string                       `json:"format"`
-	Status        *APLQueryStatus              `json:"status"`
-	Tables        []query.Table                `json:"tables"`
-	DatasetNames  []string                     `json:"datasetNames"`
-	FieldsMetaMap map[string][]APLFieldMetaMap `json:"fieldsMetaMap"`
-}
-
-type APLQueryStatus struct {
-	ElapsedTime    int64           `json:"elapsedTime"`
-	BlocksExamined int64           `json:"blocksExamined"`
-	BlocksCached   int64           `json:"blocksCached"`
-	BlocksMatched  int64           `json:"blocksMatched"`
-	BlocksSkipped  int64           `json:"blocksSkipped"`
-	RowsExamined   int64           `json:"rowsExamined"`
-	RowsMatched    int64           `json:"rowsMatched"`
-	NumGroups      int64           `json:"numGroups"`
-	IsPartial      bool            `json:"isPartial"`
-	CacheStatus    int64           `json:"cacheStatus"`
-	MinBlockTime   *time.Time      `json:"minBlockTime"`
-	MaxBlockTime   *time.Time      `json:"maxBlockTime"`
-	Messages       []query.Message `json:"messages"`
-}
-
-type APLFieldMetaMap struct {
-	Name        string `json:"name"`
-	Type        string `json:"type"`
-	Unit        string `json:"unit"`
-	Hidden      bool   `json:"hidden"`
-	Description string `json:"description"`
-}
-
-type aplFrameOptions struct {
-	FieldMetaByName map[string]APLFieldMetaMap
-	Status          *APLQueryStatus
-	Query           string
-}
-
 // queryEvents executes an APL query against the configured endpoint
 // (edge or legacy apiHost, depending on configuration).
 func (d *Datasource) queryEvents(ctx context.Context, q *queryModel, startTime, endTime time.Time) (*backend.DataResponse, error) {
 	logger := log.DefaultLogger.FromContext(ctx)
 
-	endpoint := "/v1/query/_apl"
-
-	// Add format=tabular query param
-	if strings.Contains(endpoint, "?") {
-		endpoint += "&format=tabular"
-	} else {
-		endpoint += "?format=tabular"
-	}
-
 	reqBody := APLQueryRequest{
 		APL:       q.Query,
-		MPL:       q.Query,
 		StartTime: startTime,
 		EndTime:   endTime,
 	}
 
-	req, err := d.api.client.NewRequest(ctx, http.MethodPost, endpoint, reqBody)
-	if err != nil {
-		return nil, err
-	}
-
-	var result APLQueryResponse
-	_, err = d.api.client.Do(req, &result)
+	result, err := d.api.QueryAPL(ctx, reqBody)
 	if err != nil {
 		return nil, err
 	}

@@ -59,15 +59,15 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
   }
 
   // metrics
-  async getDatasets() {
-    return this.getResource('/datasets');
+  async getMetricsDatasets() {
+    return this.getResource('/metricsdatasets');
   }
 
   async getMetrics(dataset: string) {
-    return this.getResource(`/datasets/${dataset}/metrics`);
+    return this.getResource(`/datasets/${encodeURIComponent(dataset)}/metrics`);
   }
 
   getTags(dataset: string, metric: string) {
-    return this.getResource(`/datasets/${dataset}/metrics/${metric}/tags`);
+    return this.getResource(`/datasets/${encodeURIComponent(dataset)}/metrics/${encodeURIComponent(metric)}/tags`);
   }
 }

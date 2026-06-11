@@ -1,14 +1,30 @@
 package plugin
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
+	"time"
+
+	"github.com/axiomhq/axiom-go/axiom"
+	"github.com/axiomhq/axiom-go/axiom/query"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
 
 type AxiomAPI struct {
-	apiHost string
-	client  *APIClient
+	apiURL  string
+	edgeURL string
+	client  http.Client
+}
+
+type Dataset struct {
+	DatasetName string `json:"datasetName"`
+	Kind        string
 }
 
 type DatasetFields struct {
@@ -24,16 +40,107 @@ type DatasetField struct {
 	Description string `json:"description"`
 }
 
-func (d *AxiomAPI) DatasetFields(ctx context.Context) ([]*DatasetFields, error) {
-	endpoint := "v1/datasets/_fields"
+// APLQueryRequest represents the APL query request for edge endpoints.
+type APLQueryRequest struct {
+	APL       *string   `json:"apl"`
+	StartTime time.Time `json:"startTime"`
+	EndTime   time.Time `json:"endTime"`
+}
 
-	req, err := d.client.NewRequest(ctx, http.MethodGet, endpoint, nil)
+// APLQueryRequest represents the APL query request for edge endpoints.
+type MPLQueryRequest struct {
+	MPL       *string   `json:"mpl"`
+	StartTime time.Time `json:"startTime"`
+	EndTime   time.Time `json:"endTime"`
+}
+
+// APLQueryResponse represents the tabular query response from edge endpoints.
+type APLQueryResponse struct {
+	Format        string                       `json:"format"`
+	Status        *APLQueryStatus              `json:"status"`
+	Tables        []query.Table                `json:"tables"`
+	DatasetNames  []string                     `json:"datasetNames"`
+	FieldsMetaMap map[string][]APLFieldMetaMap `json:"fieldsMetaMap"`
+}
+
+type APLQueryStatus struct {
+	ElapsedTime    int64           `json:"elapsedTime"`
+	BlocksExamined int64           `json:"blocksExamined"`
+	BlocksCached   int64           `json:"blocksCached"`
+	BlocksMatched  int64           `json:"blocksMatched"`
+	BlocksSkipped  int64           `json:"blocksSkipped"`
+	RowsExamined   int64           `json:"rowsExamined"`
+	RowsMatched    int64           `json:"rowsMatched"`
+	NumGroups      int64           `json:"numGroups"`
+	IsPartial      bool            `json:"isPartial"`
+	CacheStatus    int64           `json:"cacheStatus"`
+	MinBlockTime   *time.Time      `json:"minBlockTime"`
+	MaxBlockTime   *time.Time      `json:"maxBlockTime"`
+	Messages       []query.Message `json:"messages"`
+}
+
+type APLFieldMetaMap struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Unit        string `json:"unit"`
+	Hidden      bool   `json:"hidden"`
+	Description string `json:"description"`
+}
+
+type aplFrameOptions struct {
+	FieldMetaByName map[string]APLFieldMetaMap
+	Status          *APLQueryStatus
+	Query           string
+}
+
+type MetricsQueryResponse struct {
+	Metadata MetricsQueryMetadata `json:"metadata"`
+	Series   []MetricsQuerySeries `json:"series"`
+}
+
+type MetricsQueryMetadata struct {
+	Unit     string   `json:"unit"`
+	Warnings []string `json:"warnings"`
+}
+
+type MetricsQuerySeries struct {
+	Resolution int
+	Start      int64
+	Data       []*float64
+	Tags       map[string]string
+	Metric     string
+}
+
+func NewAPIClient(apiURL string, edgeURL string, accessToken string) *AxiomAPI {
+	client := http.Client{
+		Transport: authTransport{
+			base:  http.DefaultTransport,
+			token: accessToken,
+		},
+		Timeout: 5 * time.Minute,
+	}
+
+	return &AxiomAPI{
+		apiURL:  apiURL,
+		edgeURL: edgeURL,
+		client:  client,
+	}
+}
+
+func (api *AxiomAPI) DatasetFields(ctx context.Context) ([]*DatasetFields, error) {
+	endpoint := "/v1/datasets/_fields"
+	path, err := url.JoinPath(api.edgeURL, endpoint)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := api.NewRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var res []*DatasetFields
-	_, err = d.client.Do(req, &res)
+	_, err = api.Do(req, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -41,33 +148,20 @@ func (d *AxiomAPI) DatasetFields(ctx context.Context) ([]*DatasetFields, error) 
 	return res, nil
 }
 
-func (d *AxiomAPI) Datasets(ctx context.Context) ([]string, error) {
+func (api *AxiomAPI) Datasets(ctx context.Context) ([]Dataset, error) {
 	endpoint := "/v2/datasets"
-
-	req, err := d.client.NewRequest(ctx, http.MethodGet, endpoint, nil)
+	path, err := url.JoinPath(api.apiURL, endpoint)
 	if err != nil {
 		return nil, err
 	}
 
-	var res []string
-	_, err = d.client.Do(req, &res)
+	req, err := api.NewRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	return res, nil
-}
-
-func (d *AxiomAPI) GetMetricsForDataset(ctx context.Context, dataset string) ([]string, error) {
-	endpoint := fmt.Sprintf("v1/query/metrics/info/datasets/%s/metrics", dataset)
-
-	req, err := d.client.NewRequest(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var res []string
-	_, err = d.client.Do(req, &res)
+	var res []Dataset
+	_, err = api.Do(req, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -75,22 +169,195 @@ func (d *AxiomAPI) GetMetricsForDataset(ctx context.Context, dataset string) ([]
 	return res, nil
 }
 
-func (d *AxiomAPI) GetMetricTags(ctx context.Context, dataset string, metric string) ([]string, error) {
-	endpoint := fmt.Sprintf("/v1/query/metrics/info/datasets/%s/tags", dataset)
+func (api *AxiomAPI) FetchMetricsDataset(ctx context.Context) (datasets []string, err error) {
+	res, err := api.Datasets(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, ds := range res {
+		if ds.Kind == "'otel:metrics:v1'" {
+			datasets = append(datasets, ds.DatasetName)
+		}
+	}
+
+	return
+}
+
+func (api *AxiomAPI) GetMetricsForDataset(ctx context.Context, dataset string) ([]string, error) {
+	endpoint := fmt.Sprintf("/v1/query/metrics/info/datasets/%s/metrics", url.PathEscape(dataset))
+	path, err := url.JoinPath(api.apiURL, endpoint)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := api.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var res []string
+	_, err = api.Do(req, &res)
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
+func (api *AxiomAPI) GetMetricTags(ctx context.Context, dataset string, metric string) ([]string, error) {
+	endpoint := fmt.Sprintf("/v1/query/metrics/info/datasets/%s/tags", url.PathEscape(dataset))
 	if metric != "" {
-		endpoint = fmt.Sprintf("/v1/query/metrics/info/datasets/%s/metrics/%s/tags", dataset, metric)
+		endpoint = fmt.Sprintf("/v1/query/metrics/info/datasets/%s/metrics/%s/tags", url.PathEscape(dataset), url.PathEscape(metric))
+	}
+	path, err := url.JoinPath(api.edgeURL, endpoint)
+	if err != nil {
+		return nil, err
 	}
 
-	req, err := d.client.NewRequest(ctx, http.MethodGet, endpoint, nil)
+	req, err := api.NewRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var res []string
-	_, err = d.client.Do(req, &res)
+	_, err = api.Do(req, &res)
 	if err != nil {
 		return nil, err
 	}
 
 	return res, nil
+}
+
+func (api *AxiomAPI) QueryAPL(ctx context.Context, reqBody APLQueryRequest) (APLQueryResponse, error) {
+	endpoint := "/v1/query/_apl"
+	path, err := url.JoinPath(api.edgeURL, endpoint)
+	if err != nil {
+		return APLQueryResponse{}, err
+	}
+
+	path = path + "?format=tabular"
+
+	req, err := api.NewRequest(ctx, http.MethodPost, path, reqBody)
+	if err != nil {
+		return APLQueryResponse{}, err
+	}
+
+	var result APLQueryResponse
+	_, err = api.Do(req, &result)
+	if err != nil {
+		return APLQueryResponse{}, err
+	}
+
+	return result, nil
+}
+
+func (api *AxiomAPI) NewRequest(ctx context.Context, method, path string, body any) (*http.Request, error) {
+	u, err := url.Parse(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var reader io.Reader
+	if body != nil {
+		if r, ok := body.(io.Reader); ok {
+			reader = r
+		} else {
+			b, err := json.Marshal(body)
+			if err != nil {
+				return nil, err
+			}
+			reader = bytes.NewReader(b)
+		}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), reader)
+	if err != nil {
+		return nil, err
+	}
+	if body != nil && req.Header.Get("Content-Type") == "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("User-Agent", fmt.Sprintf("axiom-grafana/v%s", Version))
+
+	return req, nil
+}
+
+func (api *AxiomAPI) Do(req *http.Request, out any) (*http.Response, error) {
+	resp, err := api.client.Do(req)
+	if err != nil {
+		return resp, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return resp, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	if out == nil {
+		return resp, nil
+	}
+
+	err = json.NewDecoder(resp.Body).Decode(out)
+	if err != nil && err != io.EOF {
+		return resp, err
+	}
+
+	return resp, nil
+}
+
+// queryMetrics executes an MPL query against the configured endpoint
+// (edge or legacy apiHost, depending on configuration).
+func (api *AxiomAPI) queryMetrics(ctx context.Context, reqBody MPLQueryRequest) (MetricsQueryResponse, error) {
+	endpoint := "/v1/query/_mpl"
+	path, err := url.JoinPath(api.edgeURL, endpoint)
+
+	req, err := api.NewRequest(ctx, http.MethodPost, path, reqBody)
+	if err != nil {
+		return MetricsQueryResponse{}, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/vnd.metrics.v3+json")
+
+	var res MetricsQueryResponse
+	_, err = api.Do(req, &res)
+	if err != nil {
+		return MetricsQueryResponse{}, err
+	}
+
+	return res, nil
+}
+
+// CheckHealth handles health checks sent from Grafana to the plugin.
+// The main use case for these health checks is the test button on the
+// datasource configuration page which allows users to verify that
+// a datasource is working as expected.
+func (api *AxiomAPI) CheckHealth(ctx context.Context) error {
+	logger := log.DefaultLogger.FromContext(ctx)
+
+	// perform an APL query that we expect to fail (empty)
+	// validate that we get HTTP 400, this gives high confidence
+	// that we got past network and authentication issues and looked at our request
+	// it also should be somewhat inexpensive for the server
+	var axiErr axiom.HTTPError
+	path, err := url.JoinPath(api.edgeURL, "/v1/query/_apl")
+	if err != nil {
+		return err
+	}
+	r, err := api.NewRequest(ctx, http.MethodPost, path, nil)
+	_, err = api.client.Do(r)
+	if err != nil && errors.As(err, &axiErr) {
+		if axiErr.Status == 400 {
+			// expected 400 for empty query, HEALTHY
+			return nil
+		}
+	}
+
+	if err != nil {
+		logger.Error("Failed to query Axiom", "error", err)
+	}
+
+	return err
 }

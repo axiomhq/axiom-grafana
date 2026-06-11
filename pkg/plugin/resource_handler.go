@@ -14,8 +14,7 @@ import (
 func (d *Datasource) newResourceHandler() backend.CallResourceHandler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/schema-lookup", d.schemaLookup)
-	mux.HandleFunc("/datasets", d.fetchDatasets)
-	mux.HandleFunc("/metrics/", d.fetchDatasets)
+	mux.HandleFunc("/metricsdatasets", d.FetchMetricsDatasets)
 	mux.HandleFunc("/datasets/{dataset}/metrics", d.fetchDatasetMetrics)
 	mux.HandleFunc("/datasets/{dataset}/metrics/{metric}/tags", d.fetchMetricTags)
 
@@ -32,26 +31,10 @@ func (d *Datasource) schemaLookup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	j, err := json.Marshal(dsf)
-	if err != nil {
-		logger.Error("error marshaling json", "error", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Add("Content-Type", "application/json")
-
-	_, err = w.Write(j)
-	if err != nil {
-		logger.Error("error writing response", "error", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
+	writeJSON(w, logger, dsf)
 }
 
-func (d *Datasource) fetchDatasets(w http.ResponseWriter, r *http.Request) {
+func (d *Datasource) FetchDatasets(w http.ResponseWriter, r *http.Request) {
 	logger := log.DefaultLogger.FromContext(r.Context())
 
 	dsf, err := d.api.DatasetFields(context.Background())
@@ -61,21 +44,28 @@ func (d *Datasource) fetchDatasets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	j, err := json.Marshal(dsf)
+	datasets := make([]string, 0, len(dsf))
+	for _, dataset := range dsf {
+		if dataset == nil || dataset.DatasetName == "" {
+			continue
+		}
+		datasets = append(datasets, dataset.DatasetName)
+	}
+
+	writeJSON(w, logger, datasets)
+}
+
+func (d *Datasource) FetchMetricsDatasets(w http.ResponseWriter, r *http.Request) {
+	logger := log.DefaultLogger.FromContext(r.Context())
+
+	datasets, err := d.api.FetchMetricsDataset(context.Background())
 	if err != nil {
-		logger.Error("error marshaling json", "error", err.Error())
+		logger.Error("error looking up schema", "error", err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	_, err = w.Write(j)
-	if err != nil {
-		logger.Error("error writing response", "error", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
+	writeJSON(w, logger, datasets)
 }
 
 func (d *Datasource) fetchDatasetMetrics(w http.ResponseWriter, r *http.Request) {
@@ -89,21 +79,7 @@ func (d *Datasource) fetchDatasetMetrics(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	j, err := json.Marshal(dsf)
-	if err != nil {
-		logger.Error("error marshaling json", "error", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	_, err = w.Write(j)
-	if err != nil {
-		logger.Error("error writing response", "error", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
+	writeJSON(w, logger, dsf)
 }
 
 func (d *Datasource) fetchMetricTags(w http.ResponseWriter, r *http.Request) {
@@ -118,19 +94,23 @@ func (d *Datasource) fetchMetricTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	j, err := json.Marshal(dsf)
+	writeJSON(w, logger, dsf)
+}
+
+func writeJSON(w http.ResponseWriter, logger log.Logger, value any) {
+	j, err := json.Marshal(value)
 	if err != nil {
 		logger.Error("error marshaling json", "error", err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
 	_, err = w.Write(j)
 	if err != nil {
 		logger.Error("error writing response", "error", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	w.WriteHeader(http.StatusOK)
 }

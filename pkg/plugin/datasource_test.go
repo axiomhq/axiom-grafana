@@ -3,6 +3,8 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -111,6 +113,86 @@ func TestResolveBaseURL(t *testing.T) {
 			require.Equal(t, test.expected, endpoint)
 		})
 	}
+}
+
+func TestResourceHandlerReturnsDatasetNamesForAutocomplete(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/datasets/_fields", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`[
+			{"datasetName":"prod","fields":[]},
+			{"datasetName":"staging","fields":[]}
+		]`))
+		require.NoError(t, err)
+	}))
+	defer upstream.Close()
+
+	ds := Datasource{
+		api: &AxiomAPI{
+			client: newClient(upstream.URL+"/custom/path", ""),
+		},
+	}
+
+	resp := callResource(t, ds.newResourceHandler(), "/datasets")
+
+	require.Equal(t, http.StatusOK, resp.Status)
+	require.Equal(t, "application/json", http.Header(resp.Headers).Get("Content-Type"))
+	require.JSONEq(t, `["prod","staging"]`, string(resp.Body))
+}
+
+func TestResourceHandlerFetchesEscapedMetricAutocompleteValues(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.EscapedPath() {
+		case "/v1/query/metrics/info/datasets/team%2Fprod/metrics":
+			_, err := w.Write([]byte(`["http.requests/total"]`))
+			require.NoError(t, err)
+		case "/v1/query/metrics/info/datasets/team%2Fprod/metrics/http.requests%2Ftotal/tags":
+			_, err := w.Write([]byte(`["service.name"]`))
+			require.NoError(t, err)
+		default:
+			t.Fatalf("unexpected upstream path: %s", r.URL.EscapedPath())
+		}
+	}))
+	defer upstream.Close()
+
+	ds := Datasource{
+		api: &AxiomAPI{
+			client: newClient(upstream.URL+"/custom/path", ""),
+		},
+	}
+	handler := ds.newResourceHandler()
+
+	metricsResp := callResource(t, handler, "/datasets/team%2Fprod/metrics")
+	require.Equal(t, http.StatusOK, metricsResp.Status)
+	require.JSONEq(t, `["http.requests/total"]`, string(metricsResp.Body))
+
+	tagsResp := callResource(t, handler, "/datasets/team%2Fprod/metrics/http.requests%2Ftotal/tags")
+	require.Equal(t, http.StatusOK, tagsResp.Status)
+	require.JSONEq(t, `["service.name"]`, string(tagsResp.Body))
+}
+
+func callResource(t *testing.T, handler backend.CallResourceHandler, path string) *backend.CallResourceResponse {
+	t.Helper()
+
+	var resp *backend.CallResourceResponse
+	err := handler.CallResource(
+		context.Background(),
+		&backend.CallResourceRequest{
+			Method: http.MethodGet,
+			Path:   path,
+			URL:    path,
+		},
+		backend.CallResourceResponseSenderFunc(func(r *backend.CallResourceResponse) error {
+			resp = r
+			return nil
+		}),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	return resp
 }
 
 func TestBuildFrame(t *testing.T) {

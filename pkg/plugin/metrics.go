@@ -1,66 +1,10 @@
 package plugin
 
 import (
-	"context"
-	"net/http"
 	"time"
 
-	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 )
-
-type MetricsQueryResponse struct {
-	Metadata MetricsQueryMetadata `json:"metadata"`
-	Series   []MetricsQuerySeries `json:"series"`
-}
-
-type MetricsQueryMetadata struct {
-	Unit     string   `json:"unit"`
-	Warnings []string `json:"warnings"`
-}
-
-type MetricsQuerySeries struct {
-	Resolution int
-	Start      int64
-	Data       []*float64
-	Tags       map[string]string
-	Metric     string
-}
-
-// queryMetrics executes an MPL query against the configured endpoint
-// (edge or legacy apiHost, depending on configuration).
-func (d *Datasource) queryMetrics(ctx context.Context, q *queryModel, refID string, startTime, endTime time.Time) (*backend.DataResponse, error) {
-	endpoint := "/v1/query/_mpl"
-
-	reqBody := APLQueryRequest{
-		MPL:       q.Query,
-		StartTime: startTime,
-		EndTime:   endTime,
-	}
-
-	req, err := d.api.client.NewRequest(ctx, http.MethodPost, endpoint, reqBody)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/vnd.metrics.v3+json")
-
-	var res MetricsQueryResponse
-	_, err = d.api.client.Do(req, &res)
-	if err != nil {
-		return nil, err
-	}
-
-	var response backend.DataResponse
-
-	for _, group := range res.Series {
-		response.Frames = append(response.Frames, buildMetricsFrame(group, res.Metadata, refID))
-	}
-
-	// extract the data from the response
-	return &response, nil
-}
 
 func buildMetricsFrame(group MetricsQuerySeries, metadata MetricsQueryMetadata, refID string) *data.Frame {
 	frameName := group.Metric

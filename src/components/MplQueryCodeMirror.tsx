@@ -117,7 +117,7 @@ export function MplQueryCodeMirror({ value, onChange, onBlur, onRunQuery, dataso
         return;
       }
       const completionExt = createMplCompletion({
-        datasets: () => datasourceRef.current.getDatasets(),
+        datasets: () => datasourceRef.current.getMetricsDatasets(),
         metrics: (dataset: string) => datasourceRef.current.getMetrics(dataset),
         tags: (dataset: string, metric: string) => datasourceRef.current.getTags(dataset, metric),
       });
