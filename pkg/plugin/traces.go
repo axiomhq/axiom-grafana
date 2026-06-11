@@ -77,6 +77,17 @@ type traceColumn struct {
 	name  string
 }
 
+type traceFrameBuilder struct{}
+
+func (traceFrameBuilder) Build(ctx context.Context, result *axiQuery.Table, opts aplFrameOptions) (*data.Frame, error) {
+	frame, err := buildTraceFrame(ctx, result)
+	if err != nil {
+		return nil, err
+	}
+	applyAPLFrameMetadata(frame, opts)
+	return frame, nil
+}
+
 func fieldsMatchTrace(ctx context.Context, fields []axiQuery.Field) bool {
 	found := make(map[string]struct{}, len(requiredTraceFields))
 	for _, field := range fields {

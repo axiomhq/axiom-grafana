@@ -1,4 +1,4 @@
-package plugin
+package axiomapi
 
 import (
 	"bytes"
@@ -16,15 +16,23 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
 
-type AxiomAPI struct {
-	apiURL  string
-	edgeURL string
-	client  http.Client
+type Config struct {
+	AccessToken string
+	APIURL      string
+	EdgeURL     string
+	UserAgent   string
+}
+
+type Client struct {
+	apiURL    string
+	edgeURL   string
+	userAgent string
+	client    http.Client
 }
 
 type Dataset struct {
-	DatasetName string `json:"datasetName"`
-	Kind        string
+	Name string `json:"name"`
+	Kind string
 }
 
 type DatasetFields struct {
@@ -47,7 +55,7 @@ type APLQueryRequest struct {
 	EndTime   time.Time `json:"endTime"`
 }
 
-// APLQueryRequest represents the APL query request for edge endpoints.
+// MPLQueryRequest represents the MPL query request for edge endpoints.
 type MPLQueryRequest struct {
 	MPL       *string   `json:"mpl"`
 	StartTime time.Time `json:"startTime"`
@@ -87,12 +95,6 @@ type APLFieldMetaMap struct {
 	Description string `json:"description"`
 }
 
-type aplFrameOptions struct {
-	FieldMetaByName map[string]APLFieldMetaMap
-	Status          *APLQueryStatus
-	Query           string
-}
-
 type MetricsQueryResponse struct {
 	Metadata MetricsQueryMetadata `json:"metadata"`
 	Series   []MetricsQuerySeries `json:"series"`
@@ -111,23 +113,24 @@ type MetricsQuerySeries struct {
 	Metric     string
 }
 
-func NewAPIClient(apiURL string, edgeURL string, accessToken string) *AxiomAPI {
+func NewClient(config Config) *Client {
 	client := http.Client{
 		Transport: authTransport{
 			base:  http.DefaultTransport,
-			token: accessToken,
+			token: config.AccessToken,
 		},
 		Timeout: 5 * time.Minute,
 	}
 
-	return &AxiomAPI{
-		apiURL:  apiURL,
-		edgeURL: edgeURL,
-		client:  client,
+	return &Client{
+		apiURL:    config.APIURL,
+		edgeURL:   config.EdgeURL,
+		userAgent: config.UserAgent,
+		client:    client,
 	}
 }
 
-func (api *AxiomAPI) DatasetFields(ctx context.Context) ([]*DatasetFields, error) {
+func (api *Client) DatasetFields(ctx context.Context) ([]*DatasetFields, error) {
 	endpoint := "/v1/datasets/_fields"
 	path, err := url.JoinPath(api.edgeURL, endpoint)
 	if err != nil {
@@ -148,7 +151,7 @@ func (api *AxiomAPI) DatasetFields(ctx context.Context) ([]*DatasetFields, error
 	return res, nil
 }
 
-func (api *AxiomAPI) Datasets(ctx context.Context) ([]Dataset, error) {
+func (api *Client) Datasets(ctx context.Context) ([]Dataset, error) {
 	endpoint := "/v2/datasets"
 	path, err := url.JoinPath(api.apiURL, endpoint)
 	if err != nil {
@@ -169,27 +172,37 @@ func (api *AxiomAPI) Datasets(ctx context.Context) ([]Dataset, error) {
 	return res, nil
 }
 
-func (api *AxiomAPI) FetchMetricsDataset(ctx context.Context) (datasets []string, err error) {
+func (api *Client) FetchMetricsDataset(ctx context.Context) ([]string, error) {
+	logger := log.DefaultLogger.FromContext(ctx)
 	res, err := api.Datasets(ctx)
 	if err != nil {
-		return nil, err
+		logger.Error(err.Error())
+		return []string{}, err
 	}
 
+	datasets := []string{}
+
 	for _, ds := range res {
-		if ds.Kind == "'otel:metrics:v1'" {
-			datasets = append(datasets, ds.DatasetName)
+		logger.Debug(">>>>>", "kind", ds.Kind)
+
+		if ds.Kind == "otel:metrics:v1" {
+			datasets = append(datasets, ds.Name)
 		}
 	}
 
-	return
+	logger.Debug(">>>>>", "datasets", datasets)
+
+	return datasets, nil
 }
 
-func (api *AxiomAPI) GetMetricsForDataset(ctx context.Context, dataset string) ([]string, error) {
+func (api *Client) GetMetricsForDataset(ctx context.Context, dataset string, startTime, endTime string) ([]string, error) {
 	endpoint := fmt.Sprintf("/v1/query/metrics/info/datasets/%s/metrics", url.PathEscape(dataset))
-	path, err := url.JoinPath(api.apiURL, endpoint)
+	path, err := url.JoinPath(api.edgeURL, endpoint)
 	if err != nil {
 		return nil, err
 	}
+
+	path = fmt.Sprintf("%s?start=%s&end=%s", path, startTime, endTime)
 
 	req, err := api.NewRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
@@ -205,7 +218,7 @@ func (api *AxiomAPI) GetMetricsForDataset(ctx context.Context, dataset string) (
 	return res, nil
 }
 
-func (api *AxiomAPI) GetMetricTags(ctx context.Context, dataset string, metric string) ([]string, error) {
+func (api *Client) GetMetricTags(ctx context.Context, dataset string, metric string, startTime, endTime string) ([]string, error) {
 	endpoint := fmt.Sprintf("/v1/query/metrics/info/datasets/%s/tags", url.PathEscape(dataset))
 	if metric != "" {
 		endpoint = fmt.Sprintf("/v1/query/metrics/info/datasets/%s/metrics/%s/tags", url.PathEscape(dataset), url.PathEscape(metric))
@@ -214,6 +227,7 @@ func (api *AxiomAPI) GetMetricTags(ctx context.Context, dataset string, metric s
 	if err != nil {
 		return nil, err
 	}
+	path = fmt.Sprintf("%s?start=%s&end=%s", path, startTime, endTime)
 
 	req, err := api.NewRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
@@ -229,7 +243,7 @@ func (api *AxiomAPI) GetMetricTags(ctx context.Context, dataset string, metric s
 	return res, nil
 }
 
-func (api *AxiomAPI) QueryAPL(ctx context.Context, reqBody APLQueryRequest) (APLQueryResponse, error) {
+func (api *Client) QueryAPL(ctx context.Context, reqBody APLQueryRequest) (APLQueryResponse, error) {
 	endpoint := "/v1/query/_apl"
 	path, err := url.JoinPath(api.edgeURL, endpoint)
 	if err != nil {
@@ -252,7 +266,31 @@ func (api *AxiomAPI) QueryAPL(ctx context.Context, reqBody APLQueryRequest) (APL
 	return result, nil
 }
 
-func (api *AxiomAPI) NewRequest(ctx context.Context, method, path string, body any) (*http.Request, error) {
+func (api *Client) QueryMetrics(ctx context.Context, reqBody MPLQueryRequest) (MetricsQueryResponse, error) {
+	endpoint := "/v1/query/_mpl"
+	path, err := url.JoinPath(api.edgeURL, endpoint)
+	if err != nil {
+		return MetricsQueryResponse{}, err
+	}
+
+	req, err := api.NewRequest(ctx, http.MethodPost, path, reqBody)
+	if err != nil {
+		return MetricsQueryResponse{}, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/vnd.metrics.v3+json")
+
+	var res MetricsQueryResponse
+	_, err = api.Do(req, &res)
+	if err != nil {
+		return MetricsQueryResponse{}, err
+	}
+
+	return res, nil
+}
+
+func (api *Client) NewRequest(ctx context.Context, method, path string, body any) (*http.Request, error) {
 	u, err := url.Parse(path)
 	if err != nil {
 		return nil, err
@@ -278,12 +316,14 @@ func (api *AxiomAPI) NewRequest(ctx context.Context, method, path string, body a
 	if body != nil && req.Header.Get("Content-Type") == "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	req.Header.Set("User-Agent", fmt.Sprintf("axiom-grafana/v%s", Version))
+	if api.userAgent != "" {
+		req.Header.Set("User-Agent", api.userAgent)
+	}
 
 	return req, nil
 }
 
-func (api *AxiomAPI) Do(req *http.Request, out any) (*http.Response, error) {
+func (api *Client) Do(req *http.Request, out any) (*http.Response, error) {
 	resp, err := api.client.Do(req)
 	if err != nil {
 		return resp, err
@@ -307,34 +347,11 @@ func (api *AxiomAPI) Do(req *http.Request, out any) (*http.Response, error) {
 	return resp, nil
 }
 
-// queryMetrics executes an MPL query against the configured endpoint
-// (edge or legacy apiHost, depending on configuration).
-func (api *AxiomAPI) queryMetrics(ctx context.Context, reqBody MPLQueryRequest) (MetricsQueryResponse, error) {
-	endpoint := "/v1/query/_mpl"
-	path, err := url.JoinPath(api.edgeURL, endpoint)
-
-	req, err := api.NewRequest(ctx, http.MethodPost, path, reqBody)
-	if err != nil {
-		return MetricsQueryResponse{}, err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/vnd.metrics.v3+json")
-
-	var res MetricsQueryResponse
-	_, err = api.Do(req, &res)
-	if err != nil {
-		return MetricsQueryResponse{}, err
-	}
-
-	return res, nil
-}
-
 // CheckHealth handles health checks sent from Grafana to the plugin.
 // The main use case for these health checks is the test button on the
 // datasource configuration page which allows users to verify that
 // a datasource is working as expected.
-func (api *AxiomAPI) CheckHealth(ctx context.Context) error {
+func (api *Client) CheckHealth(ctx context.Context) error {
 	logger := log.DefaultLogger.FromContext(ctx)
 
 	// perform an APL query that we expect to fail (empty)

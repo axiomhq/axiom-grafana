@@ -1,7 +1,6 @@
 package plugin
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 
@@ -24,7 +23,7 @@ func (d *Datasource) newResourceHandler() backend.CallResourceHandler {
 func (d *Datasource) schemaLookup(w http.ResponseWriter, r *http.Request) {
 	logger := log.DefaultLogger.FromContext(r.Context())
 
-	dsf, err := d.api.DatasetFields(context.Background())
+	dsf, err := d.api.DatasetFields(r.Context())
 	if err != nil {
 		logger.Error("error looking up schema", "error", err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -37,7 +36,7 @@ func (d *Datasource) schemaLookup(w http.ResponseWriter, r *http.Request) {
 func (d *Datasource) FetchDatasets(w http.ResponseWriter, r *http.Request) {
 	logger := log.DefaultLogger.FromContext(r.Context())
 
-	dsf, err := d.api.DatasetFields(context.Background())
+	dsf, err := d.api.DatasetFields(r.Context())
 	if err != nil {
 		logger.Error("error looking up schema", "error", err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -58,12 +57,14 @@ func (d *Datasource) FetchDatasets(w http.ResponseWriter, r *http.Request) {
 func (d *Datasource) FetchMetricsDatasets(w http.ResponseWriter, r *http.Request) {
 	logger := log.DefaultLogger.FromContext(r.Context())
 
-	datasets, err := d.api.FetchMetricsDataset(context.Background())
+	datasets, err := d.api.FetchMetricsDataset(r.Context())
 	if err != nil {
-		logger.Error("error looking up schema", "error", err.Error())
+		logger.Error("error listing datasets", "error", err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	logger.Debug("######", "ds", datasets)
 
 	writeJSON(w, logger, datasets)
 }
@@ -71,8 +72,10 @@ func (d *Datasource) FetchMetricsDatasets(w http.ResponseWriter, r *http.Request
 func (d *Datasource) fetchDatasetMetrics(w http.ResponseWriter, r *http.Request) {
 	logger := log.DefaultLogger.FromContext(r.Context())
 	dataset := r.PathValue("dataset")
+	startTime := r.URL.Query().Get("start")
+	endTime := r.URL.Query().Get("end")
 
-	dsf, err := d.api.GetMetricsForDataset(context.Background(), dataset)
+	dsf, err := d.api.GetMetricsForDataset(r.Context(), dataset, startTime, endTime)
 	if err != nil {
 		logger.Error("error looking up schema", "error", err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -86,8 +89,10 @@ func (d *Datasource) fetchMetricTags(w http.ResponseWriter, r *http.Request) {
 	logger := log.DefaultLogger.FromContext(r.Context())
 	dataset := r.PathValue("dataset")
 	metric := r.PathValue("metric")
+	startTime := r.URL.Query().Get("start")
+	endTime := r.URL.Query().Get("end")
 
-	dsf, err := d.api.GetMetricTags(context.Background(), dataset, metric)
+	dsf, err := d.api.GetMetricTags(r.Context(), dataset, metric, startTime, endTime)
 	if err != nil {
 		logger.Error("error looking up schema", "error", err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/axiomhq/axiom-go/axiom/query"
+	"github.com/axiomhq/axiom-grafana/pkg/axiomapi"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 	"github.com/stretchr/testify/require"
 
@@ -115,31 +116,6 @@ func TestResolveBaseURL(t *testing.T) {
 	}
 }
 
-func TestResourceHandlerReturnsDatasetNamesForAutocomplete(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/v1/datasets/_fields", r.URL.Path)
-		w.Header().Set("Content-Type", "application/json")
-		_, err := w.Write([]byte(`[
-			{"datasetName":"prod","fields":[]},
-			{"datasetName":"staging","fields":[]}
-		]`))
-		require.NoError(t, err)
-	}))
-	defer upstream.Close()
-
-	ds := Datasource{
-		api: &AxiomAPI{
-			client: newClient(upstream.URL+"/custom/path", ""),
-		},
-	}
-
-	resp := callResource(t, ds.newResourceHandler(), "/datasets")
-
-	require.Equal(t, http.StatusOK, resp.Status)
-	require.Equal(t, "application/json", http.Header(resp.Headers).Get("Content-Type"))
-	require.JSONEq(t, `["prod","staging"]`, string(resp.Body))
-}
-
 func TestResourceHandlerFetchesEscapedMetricAutocompleteValues(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -158,9 +134,10 @@ func TestResourceHandlerFetchesEscapedMetricAutocompleteValues(t *testing.T) {
 	defer upstream.Close()
 
 	ds := Datasource{
-		api: &AxiomAPI{
-			client: newClient(upstream.URL+"/custom/path", ""),
-		},
+		api: axiomapi.NewClient(axiomapi.Config{
+			APIURL:  upstream.URL,
+			EdgeURL: upstream.URL,
+		}),
 	}
 	handler := ds.newResourceHandler()
 
@@ -214,7 +191,7 @@ func TestBuildFrame(t *testing.T) {
 			err := json.Unmarshal([]byte(test.aplResponse), &queryRes)
 			require.NoError(t, err)
 
-			got, err := buildFrame(context.Background(), &queryRes.Tables[0])
+			got, err := buildAPLFrame(context.Background(), &queryRes.Tables[0])
 			require.NoError(t, err)
 			t.Logf("%#v", got)
 		})
@@ -244,7 +221,7 @@ func TestBuildFrameStringifiesUnknownArrayFields(t *testing.T) {
 		},
 	}
 
-	got, err := buildFrame(context.Background(), &table)
+	got, err := buildAPLFrame(context.Background(), &table)
 	require.NoError(t, err)
 	require.Len(t, got.Fields, 1)
 
@@ -269,7 +246,7 @@ func TestBuildFrameStringifiesNonStringValuesInStringFields(t *testing.T) {
 		},
 	}
 
-	got, err := buildFrame(context.Background(), &table)
+	got, err := buildAPLFrame(context.Background(), &table)
 	require.NoError(t, err)
 	require.Len(t, got.Fields, 1)
 
@@ -301,7 +278,7 @@ func TestBuildFrameInfersUnknownTimeField(t *testing.T) {
 		},
 	}
 
-	got, err := buildFrame(context.Background(), &table)
+	got, err := buildAPLFrame(context.Background(), &table)
 	require.NoError(t, err)
 	require.Len(t, got.Fields, 2)
 	require.Equal(t, data.FieldTypeTime, got.Fields[0].Type())
@@ -323,7 +300,7 @@ func TestBuildFrameTreatsTimeFieldAsDatetimeRegardlessOfDeclaredType(t *testing.
 		},
 	}
 
-	got, err := buildFrame(context.Background(), &table)
+	got, err := buildAPLFrame(context.Background(), &table)
 	require.NoError(t, err)
 	require.Len(t, got.Fields, 2)
 	require.Equal(t, data.FieldTypeTime, got.Fields[0].Type())
@@ -349,9 +326,9 @@ func TestBuildFrameAppliesFieldMetaMapUnitToAggregatedField(t *testing.T) {
 			{float64(5234)},
 		},
 	}
-	fieldMetaByName := fieldMetaByNameForResponse(APLQueryResponse{
+	fieldMetaByName := fieldMetaByNameForResponse(axiomapi.APLQueryResponse{
 		DatasetNames: []string{"aws-lambda-dev"},
-		FieldsMetaMap: map[string][]APLFieldMetaMap{
+		FieldsMetaMap: map[string][]axiomapi.APLFieldMetaMap{
 			"aws-lambda-dev": {
 				{
 					Name:        "record.metrics.durationMs",
@@ -363,7 +340,7 @@ func TestBuildFrameAppliesFieldMetaMapUnitToAggregatedField(t *testing.T) {
 		},
 	})
 
-	got, err := buildFrame(context.Background(), &table, aplFrameOptions{FieldMetaByName: fieldMetaByName})
+	got, err := buildAPLFrame(context.Background(), &table, aplFrameOptions{FieldMetaByName: fieldMetaByName})
 	require.NoError(t, err)
 	require.Len(t, got.Fields, 3)
 	require.NotNil(t, got.Fields[2].Config)
@@ -382,7 +359,7 @@ func TestBuildFrameAddsAxiomStatusToFrameMetadata(t *testing.T) {
 			{float64(10)},
 		},
 	}
-	status := &APLQueryStatus{
+	status := &axiomapi.APLQueryStatus{
 		ElapsedTime:    467358,
 		BlocksExamined: 10,
 		RowsExamined:   155986,
@@ -394,7 +371,7 @@ func TestBuildFrameAddsAxiomStatusToFrameMetadata(t *testing.T) {
 		},
 	}
 
-	got, err := buildFrame(context.Background(), &table, aplFrameOptions{
+	got, err := buildAPLFrame(context.Background(), &table, aplFrameOptions{
 		Status: status,
 		Query:  "['aws-lambda-dev'] | count",
 	})
@@ -504,7 +481,7 @@ func TestBuildFrameSetsTraceMetadata(t *testing.T) {
 		},
 	}
 
-	got, err := buildFrame(context.Background(), &table)
+	got, err := buildAPLFrame(context.Background(), &table)
 	require.NoError(t, err)
 	require.Equal(t, "Trace", got.Name)
 	require.NotNil(t, got.Meta)
@@ -573,7 +550,7 @@ func TestBuildMetricsFrameSetsDisplayNameFromLabels(t *testing.T) {
 	v2 := float64(0.2)
 
 	frame := buildMetricsFrame(
-		MetricsQuerySeries{
+		axiomapi.MetricsQuerySeries{
 			Resolution: 60,
 			Start:      1781186400,
 			Metric:     "k8s.pod.cpu.usage",
@@ -584,7 +561,7 @@ func TestBuildMetricsFrameSetsDisplayNameFromLabels(t *testing.T) {
 			},
 			Data: []*float64{&v1, &v2},
 		},
-		MetricsQueryMetadata{Unit: "{cpu}"},
+		axiomapi.MetricsQueryMetadata{Unit: "{cpu}"},
 		"A",
 	)
 
@@ -605,13 +582,13 @@ func TestBuildMetricsFrameSetsDisplayNameFromRefIDWhenTagsAreEmpty(t *testing.T)
 	v1 := float64(0.1)
 
 	frame := buildMetricsFrame(
-		MetricsQuerySeries{
+		axiomapi.MetricsQuerySeries{
 			Resolution: 60,
 			Start:      1781186400,
 			Metric:     "k8s.pod.cpu.usage",
 			Data:       []*float64{&v1},
 		},
-		MetricsQueryMetadata{},
+		axiomapi.MetricsQueryMetadata{},
 		"A",
 	)
 

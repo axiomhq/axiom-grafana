@@ -7,9 +7,11 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/axiomhq/axiom-grafana/pkg/axiomapi"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	"github.com/grafana/grafana-plugin-sdk-go/data"
 	"github.com/grafana/grafana-plugin-sdk-go/experimental/concurrent"
 )
 
@@ -29,7 +31,7 @@ var (
 // its health and has streaming skills.
 type Datasource struct {
 	backend.CallResourceHandler
-	api *AxiomAPI
+	api *axiomapi.Client
 }
 
 type queryModel struct {
@@ -42,36 +44,17 @@ type queryModel struct {
 // NewDatasource creates a new datasource instance.
 func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
 	logger := log.DefaultLogger.FromContext(ctx)
-	accessToken := ""
-	if token, exists := settings.DecryptedSecureJSONData["accessToken"]; exists {
-		// Use the decrypted API key.
-		accessToken = token
-	}
-
-	var data map[string]any
-	err := json.Unmarshal(settings.JSONData, &data)
+	config, err := parseConfig(ctx, settings)
 	if err != nil {
-		logger.Error("failed to unmarshal settings", "error", err)
+		logger.Error("Failed to parse config", "error", err.Error())
 		return nil, err
 	}
-	host := "https://api.axiom.co"
-	if apiHost, exists := data["apiHost"]; exists {
-		host = apiHost.(string)
-	}
-
-	edge := checkString(data["edge"])
-	edgeURL := checkString(data["edgeURL"])
-
-	resolvedEdgeURL, err := resolveBaseUrl(urlInput{
-		EdgeURL: edgeURL,
-		Edge:    edge,
-		APIHost: host,
+	api := axiomapi.NewClient(axiomapi.Config{
+		AccessToken: config.AccessToken,
+		APIURL:      config.APIHost,
+		EdgeURL:     config.EdgeURL,
+		UserAgent:   fmt.Sprintf("axiom-grafana/v%s", Version),
 	})
-	if err != nil {
-		logger.Error("failed to resolve correct axiom api/edge url", "error", err)
-		return nil, err
-	}
-	api := NewAPIClient(host, resolvedEdgeURL, accessToken)
 
 	ds := &Datasource{
 		api: api,
@@ -170,23 +153,101 @@ func (d *Datasource) execQuery(ctx context.Context, query concurrent.Query) (res
 	return *queryResponse
 }
 
-// queryMetrics executes an MPL query against the configured edge endpoint
-func (d *Datasource) queryMetrics(ctx context.Context, q *queryModel, refID string, startTime, endTime time.Time) (*backend.DataResponse, error) {
-	reqBody := MPLQueryRequest{
-		MPL:       q.Query,
+// queryEvents executes an APL query against the configured endpoint
+// (edge or legacy apiHost, depending on configuration).
+func (d *Datasource) queryEvents(ctx context.Context, q *queryModel, startTime, endTime time.Time) (*backend.DataResponse, error) {
+	logger := log.DefaultLogger.FromContext(ctx)
+
+	reqBody := axiomapi.APLQueryRequest{
+		APL:       q.Query,
 		StartTime: startTime,
 		EndTime:   endTime,
 	}
 
-	res, err := d.api.queryMetrics(ctx, reqBody)
+	result, err := d.api.QueryAPL(ctx, reqBody)
 	if err != nil {
 		return nil, err
 	}
 
 	var response backend.DataResponse
 
+	if len(result.Tables) == 0 {
+		return nil, fmt.Errorf("query returned no tables")
+	}
+
+	var frame *data.Frame
+	var newFrame *data.Frame
+	frameOptions := aplFrameOptions{
+		FieldMetaByName: fieldMetaByNameForResponse(result),
+		Status:          result.Status,
+	}
+	if q.Query != nil {
+		frameOptions.Query = *q.Query
+	}
+	if len(result.Tables) > 1 {
+		if q.Totals {
+			frame, err = buildAPLFrame(ctx, &result.Tables[1], frameOptions)
+		} else {
+			frame, err = buildAPLFrame(ctx, &result.Tables[0], frameOptions)
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		newFrame, err = wideFrameBuilder{}.Build(frame)
+		if err != nil {
+			logger.Error("transformation from long to wide failed", "error", err.Error())
+		}
+		if newFrame != nil {
+			if newFrame.Meta == nil {
+				newFrame.Meta = &data.FrameMeta{}
+			}
+			if newFrame.Meta.PreferredVisualization == "" {
+				newFrame.Meta.PreferredVisualization = data.VisTypeGraph
+			}
+		}
+	} else {
+		frame, err = buildAPLFrame(ctx, &result.Tables[0], frameOptions)
+		if err != nil {
+			return nil, err
+		}
+		if frame != nil {
+			if frame.Meta == nil {
+				frame.Meta = &data.FrameMeta{}
+			}
+			if frame.Meta.PreferredVisualization == "" {
+				frame.Meta.PreferredVisualization = data.VisTypeLogs
+			}
+		}
+	}
+
+	if newFrame != nil {
+		response.Frames = append(response.Frames, newFrame)
+	} else {
+		response.Frames = append(response.Frames, frame)
+	}
+
+	return &response, nil
+}
+
+// queryMetrics executes an MPL query against the configured edge endpoint
+func (d *Datasource) queryMetrics(ctx context.Context, q *queryModel, refID string, startTime, endTime time.Time) (*backend.DataResponse, error) {
+	reqBody := axiomapi.MPLQueryRequest{
+		MPL:       q.Query,
+		StartTime: startTime,
+		EndTime:   endTime,
+	}
+
+	res, err := d.api.QueryMetrics(ctx, reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	var response backend.DataResponse
+	frameBuilder := newMetricsFrameBuilder(res.Metadata, refID)
+
 	for _, group := range res.Series {
-		response.Frames = append(response.Frames, buildMetricsFrame(group, res.Metadata, refID))
+		response.Frames = append(response.Frames, frameBuilder.Build(group))
 	}
 
 	// extract the data from the response

@@ -21,6 +21,15 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
     };
   }
 
+  private timeRangeParams(): Record<string, string> {
+    const from = getTemplateSrv().replace('$__from');
+    const to = getTemplateSrv().replace('$__to');
+    return {
+      start: new Date(parseInt(from, 10)).toISOString(),
+      end: new Date(parseInt(to, 10)).toISOString(),
+    };
+  }
+
   async metricFindQuery(query: AxiomQuery, options?: any) {
     const request = {
       targets: [
@@ -60,14 +69,34 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
 
   // metrics
   async getMetricsDatasets() {
-    return this.getResource('/metricsdatasets');
+    return this.getResource('metricsdatasets');
   }
 
   async getMetrics(dataset: string) {
-    return this.getResource(`/datasets/${encodeURIComponent(dataset)}/metrics`);
+    const timeParams = this.timeRangeParams();
+    const params = new URLSearchParams();
+    if (timeParams.start) {
+      params.set('start', timeParams.start);
+    }
+    if (timeParams.end) {
+      params.set('end', timeParams.end);
+    }
+
+    return this.getResource(`datasets/${encodeURIComponent(dataset)}/metrics?${params}`);
   }
 
   getTags(dataset: string, metric: string) {
-    return this.getResource(`/datasets/${encodeURIComponent(dataset)}/metrics/${encodeURIComponent(metric)}/tags`);
+    const timeParams = this.timeRangeParams();
+    const params = new URLSearchParams();
+    if (timeParams.start) {
+      params.set('start', timeParams.start);
+    }
+    if (timeParams.end) {
+      params.set('end', timeParams.end);
+    }
+
+    return this.getResource(
+      `datasets/${encodeURIComponent(dataset)}/metrics/${encodeURIComponent(metric)}/tags?${params}`
+    );
   }
 }

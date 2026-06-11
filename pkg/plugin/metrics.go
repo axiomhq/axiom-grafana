@@ -3,10 +3,27 @@ package plugin
 import (
 	"time"
 
+	"github.com/axiomhq/axiom-grafana/pkg/axiomapi"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 )
 
-func buildMetricsFrame(group MetricsQuerySeries, metadata MetricsQueryMetadata, refID string) *data.Frame {
+type metricsFrameBuilder struct {
+	metadata axiomapi.MetricsQueryMetadata
+	refID    string
+}
+
+func newMetricsFrameBuilder(metadata axiomapi.MetricsQueryMetadata, refID string) metricsFrameBuilder {
+	return metricsFrameBuilder{
+		metadata: metadata,
+		refID:    refID,
+	}
+}
+
+func buildMetricsFrame(group axiomapi.MetricsQuerySeries, metadata axiomapi.MetricsQueryMetadata, refID string) *data.Frame {
+	return newMetricsFrameBuilder(metadata, refID).Build(group)
+}
+
+func (b metricsFrameBuilder) Build(group axiomapi.MetricsQuerySeries) *data.Frame {
 	frameName := group.Metric
 	if frameName == "" {
 		frameName = "value"
@@ -18,7 +35,7 @@ func buildMetricsFrame(group MetricsQuerySeries, metadata MetricsQueryMetadata, 
 	}
 
 	frame := data.NewFrame(frameName)
-	frame.RefID = refID
+	frame.RefID = b.refID
 	frame.Meta = &data.FrameMeta{
 		Type:        data.FrameTypeTimeSeriesMulti,
 		TypeVersion: data.FrameTypeVersion{0, 1},
@@ -29,8 +46,8 @@ func buildMetricsFrame(group MetricsQuerySeries, metadata MetricsQueryMetadata, 
 	applyMetricsTimeFieldMetadata(timeField, group)
 	frame.Fields = append(frame.Fields, timeField)
 	valueField := data.NewField(frameName, labels, []*float64{})
-	applyMetricsDisplayName(valueField, refID, len(labels) > 0)
-	applyMetricsFieldMetadata(valueField, metadata)
+	applyMetricsDisplayName(valueField, b.refID, len(labels) > 0)
+	applyMetricsFieldMetadata(valueField, b.metadata)
 	frame.Fields = append(frame.Fields, valueField)
 
 	// add values
@@ -54,7 +71,7 @@ func applyMetricsDisplayName(field *data.Field, refID string, hasLabels bool) {
 	field.Config.DisplayNameFromDS = refID
 }
 
-func applyMetricsFieldMetadata(field *data.Field, metadata MetricsQueryMetadata) {
+func applyMetricsFieldMetadata(field *data.Field, metadata axiomapi.MetricsQueryMetadata) {
 	if metadata.Unit == "" {
 		return
 	}
@@ -65,7 +82,7 @@ func applyMetricsFieldMetadata(field *data.Field, metadata MetricsQueryMetadata)
 	field.Config.Unit = metadata.Unit
 }
 
-func applyMetricsTimeFieldMetadata(field *data.Field, group MetricsQuerySeries) {
+func applyMetricsTimeFieldMetadata(field *data.Field, group axiomapi.MetricsQuerySeries) {
 	if group.Resolution <= 0 {
 		return
 	}
