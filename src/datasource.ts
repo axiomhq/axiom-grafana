@@ -17,7 +17,7 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
 
     return {
       ...query,
-      apl: query.apl ? templateSrv.replace(query.apl, scopedVars) : '',
+      apl: query.query ? templateSrv.replace(query.query, scopedVars) : '',
     };
   }
 
@@ -55,6 +55,19 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
   }
 
   getQueryDisplayText(query: AxiomQuery) {
-    return query.apl;
+    return query.query;
+  }
+
+  // metrics
+  async getDatasets() {
+    return this.getResource('/datasets');
+  }
+
+  async getMetrics(dataset: string) {
+    return this.getResource(`/datasets/${dataset}/metrics`);
+  }
+
+  getTags(dataset: string, metric: string) {
+    return this.getResource(`/datasets/${dataset}/metrics/${metric}/tags`);
   }
 }

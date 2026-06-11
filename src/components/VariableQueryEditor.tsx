@@ -1,4 +1,4 @@
-import { DataSource } from 'datasource';
+import { DataSource } from '../datasource';
 import React from 'react';
 import { QueryEditor } from './QueryEditor';
 import { AxiomQuery } from '../types';
@@ -12,7 +12,7 @@ interface Props {
 export const VariableQueryEditor = ({ onChange, query, datasource }: Props) => {
     const saveQuery = (newQuery: AxiomQuery) => {
         if (newQuery) {
-            onChange(newQuery, newQuery.apl);
+            onChange(newQuery, newQuery.query ?? newQuery.apl);
         }
     };
 

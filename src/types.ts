@@ -1,6 +1,8 @@
 import { DataQuery, DataSourceJsonData } from '@grafana/schema';
 
 export interface AxiomQuery extends DataQuery {
+  kind: 'apl' | 'mpl' | null | undefined
+  query: string;
   apl: string;
   totals: boolean;
   startTime?: string;
@@ -8,7 +10,9 @@ export interface AxiomQuery extends DataQuery {
 }
 
 export const DEFAULT_QUERY: Partial<AxiomQuery> = {
-  apl: '',
+  kind: 'apl',
+  query: '',
+  apl: '', // deprecated: should use query instead
   totals: false,
 };
 
