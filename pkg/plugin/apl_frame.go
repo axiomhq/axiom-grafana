@@ -83,6 +83,7 @@ func (aplTimeSeriesFrameBuilder) Build(ctx context.Context, result *axiQuery.Tab
 		return nil, err
 	}
 
+	frame = prepareAPLTimeSeriesFrame(frame)
 	wideFrame, err := aplWideFrameBuilder{}.Build(frame)
 	if err != nil {
 		logger.Error("transformation from long to wide failed", "error", err.Error())
@@ -91,6 +92,33 @@ func (aplTimeSeriesFrameBuilder) Build(ctx context.Context, result *axiQuery.Tab
 
 	applyPreferredVisualization(wideFrame, data.VisTypeGraph)
 	return wideFrame, nil
+}
+
+func prepareAPLTimeSeriesFrame(frame *data.Frame) *data.Frame {
+	primaryTimeIndex := preferredAPLTimeFieldIndex(frame.Fields)
+	if primaryTimeIndex < 0 {
+		return frame
+	}
+
+	fields := make([]*data.Field, 0, len(frame.Fields))
+	fields = append(fields, frame.Fields[primaryTimeIndex])
+	for i, field := range frame.Fields {
+		if i == primaryTimeIndex {
+			continue
+		}
+		if _, ok := aplDataFrameTimeFieldPriority(field); ok {
+			continue
+		}
+		fields = append(fields, field)
+	}
+
+	if len(fields) == len(frame.Fields) && primaryTimeIndex == 0 {
+		return frame
+	}
+
+	timeSeriesFrame := *frame
+	timeSeriesFrame.Fields = fields
+	return &timeSeriesFrame
 }
 
 type aplEventsFrameBuilder struct{}

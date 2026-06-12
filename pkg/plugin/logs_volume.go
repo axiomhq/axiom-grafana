@@ -167,17 +167,21 @@ func datasourceName(ctx backend.PluginContext) string {
 	return ctx.DataSourceInstanceSettings.Name
 }
 
-func logsVolumeColumns(fields []axiQuery.Field) map[string]int {
-	columns := make(map[string]int, len(fields))
+func logsVolumeColumns(fields []axiQuery.Field) map[string]logColumn {
+	columns := make(map[string]logColumn, len(fields))
 	for i, field := range fields {
-		switch strings.ToLower(field.Name) {
-		case "_time", "time", "timestamp":
-			if _, exists := columns["time"]; !exists {
-				columns["time"] = i
+		if priority, ok := aplTimeFieldPriority(field.Name); ok {
+			column, exists := columns["time"]
+			if !exists || priority < column.priority {
+				columns["time"] = logColumn{index: i, priority: priority}
 			}
+			continue
+		}
+
+		switch strings.ToLower(field.Name) {
 		case "count", "count_":
 			if _, exists := columns["count"]; !exists {
-				columns["count"] = i
+				columns["count"] = logColumn{index: i}
 			}
 		}
 	}
@@ -185,13 +189,13 @@ func logsVolumeColumns(fields []axiQuery.Field) map[string]int {
 	return columns
 }
 
-func logsVolumeColumnValue(table axiQuery.Table, columns map[string]int, name string, row int) any {
-	columnIndex, ok := columns[name]
-	if !ok || columnIndex >= len(table.Columns) || row >= len(table.Columns[columnIndex]) {
+func logsVolumeColumnValue(table axiQuery.Table, columns map[string]logColumn, name string, row int) any {
+	column, ok := columns[name]
+	if !ok || column.index >= len(table.Columns) || row >= len(table.Columns[column.index]) {
 		return nil
 	}
 
-	return table.Columns[columnIndex][row]
+	return table.Columns[column.index][row]
 }
 
 func logsVolumeCount(value any) float64 {

@@ -23,58 +23,67 @@ var requiredTraceFields = map[string]struct{}{
 	"duration":      {},
 }
 
-var traceFieldAliases = map[string]string{
-	"traceID":  "traceID",
-	"traceId":  "traceID",
-	"trace_id": "traceID",
-	"trace.id": "traceID",
-	"traceid":  "traceID",
+var traceFieldAliases = map[string]traceFieldAlias{
+	"traceID":  {canonicalName: "traceID"},
+	"traceId":  {canonicalName: "traceID"},
+	"trace_id": {canonicalName: "traceID"},
+	"trace.id": {canonicalName: "traceID"},
+	"traceid":  {canonicalName: "traceID"},
 
-	"spanID":  "spanID",
-	"spanId":  "spanID",
-	"span_id": "spanID",
-	"span.id": "spanID",
-	"spanid":  "spanID",
+	"spanID":  {canonicalName: "spanID"},
+	"spanId":  {canonicalName: "spanID"},
+	"span_id": {canonicalName: "spanID"},
+	"span.id": {canonicalName: "spanID"},
+	"spanid":  {canonicalName: "spanID"},
 
-	"parentSpanID":   "parentSpanID",
-	"parentSpanId":   "parentSpanID",
-	"parent_span_id": "parentSpanID",
-	"parent.span.id": "parentSpanID",
+	"parentSpanID":   {canonicalName: "parentSpanID"},
+	"parentSpanId":   {canonicalName: "parentSpanID"},
+	"parent_span_id": {canonicalName: "parentSpanID"},
+	"parent.span.id": {canonicalName: "parentSpanID"},
 
-	"name":           "operationName",
-	"operationName":  "operationName",
-	"operation_name": "operationName",
-	"span.name":      "operationName",
+	"name":           {canonicalName: "operationName"},
+	"operationName":  {canonicalName: "operationName"},
+	"operation_name": {canonicalName: "operationName"},
+	"span.name":      {canonicalName: "operationName"},
 
-	"serviceName":           "serviceName",
-	"service_name":          "serviceName",
-	"service.name":          "serviceName",
-	"resource.service.name": "serviceName",
+	"serviceName":           {canonicalName: "serviceName"},
+	"service_name":          {canonicalName: "serviceName"},
+	"service.name":          {canonicalName: "serviceName"},
+	"resource.service.name": {canonicalName: "serviceName"},
 
-	"_time":       "startTime",
-	"startTime":   "startTime",
-	"start_time":  "startTime",
-	"start.time":  "startTime",
-	"timestamp":   "startTime",
-	"timestampNs": "startTime",
+	"_time":       {canonicalName: "startTime", priority: aplTimePriorityTime},
+	"timestamp":   {canonicalName: "startTime", priority: aplTimePriorityTimestamp},
+	"time":        {canonicalName: "startTime", priority: aplTimePriorityTimeAlias},
+	"startTime":   {canonicalName: "startTime", priority: aplTimePriorityTimeAlias},
+	"start_time":  {canonicalName: "startTime", priority: aplTimePriorityTimeAlias},
+	"start.time":  {canonicalName: "startTime", priority: aplTimePriorityTimeAlias},
+	"timestampNs": {canonicalName: "startTime", priority: aplTimePriorityTimeAlias},
+	"_sysTime":    {canonicalName: "startTime", priority: aplTimePrioritySysTime},
+	"_systime":    {canonicalName: "startTime", priority: aplTimePrioritySysTime},
 
-	"duration":    "duration",
-	"durationMs":  "duration",
-	"duration_ms": "duration",
-	"durationNs":  "duration",
-	"duration_ns": "duration",
+	"duration":    {canonicalName: "duration"},
+	"durationMs":  {canonicalName: "duration"},
+	"duration_ms": {canonicalName: "duration"},
+	"durationNs":  {canonicalName: "duration"},
+	"duration_ns": {canonicalName: "duration"},
 
-	"serviceTags":  "serviceTags",
-	"service_tags": "serviceTags",
-	"tags":         "tags",
-	"attributes":   "tags",
-	"logs":         "logs",
-	"events":       "logs",
+	"serviceTags":  {canonicalName: "serviceTags"},
+	"service_tags": {canonicalName: "serviceTags"},
+	"tags":         {canonicalName: "tags"},
+	"attributes":   {canonicalName: "tags"},
+	"logs":         {canonicalName: "logs"},
+	"events":       {canonicalName: "logs"},
+}
+
+type traceFieldAlias struct {
+	canonicalName string
+	priority      int
 }
 
 type traceColumn struct {
-	index int
-	name  string
+	index    int
+	name     string
+	priority int
 }
 
 type aplTraceFrameBuilder struct{}
@@ -91,11 +100,11 @@ func (aplTraceFrameBuilder) Build(ctx context.Context, result *axiQuery.Table, o
 func fieldsMatchTrace(ctx context.Context, fields []axiQuery.Field) bool {
 	found := make(map[string]struct{}, len(requiredTraceFields))
 	for _, field := range fields {
-		canonicalName, ok := traceFieldAliases[field.Name]
+		alias, ok := traceFieldAliases[field.Name]
 		if !ok {
 			continue
 		}
-		found[canonicalName] = struct{}{}
+		found[alias.canonicalName] = struct{}{}
 	}
 
 	for requiredField := range requiredTraceFields {
@@ -171,14 +180,15 @@ func buildTraceFrame(ctx context.Context, result *axiQuery.Table) (*data.Frame, 
 func traceColumns(fields []axiQuery.Field) map[string]traceColumn {
 	columns := make(map[string]traceColumn, len(fields))
 	for i, field := range fields {
-		canonicalName, ok := traceFieldAliases[field.Name]
+		alias, ok := traceFieldAliases[field.Name]
 		if !ok {
 			continue
 		}
-		if _, exists := columns[canonicalName]; exists {
+		column, exists := columns[alias.canonicalName]
+		if exists && column.priority <= alias.priority {
 			continue
 		}
-		columns[canonicalName] = traceColumn{index: i, name: field.Name}
+		columns[alias.canonicalName] = traceColumn{index: i, name: field.Name, priority: alias.priority}
 	}
 
 	return columns
@@ -233,8 +243,8 @@ func traceServiceTagsValue(result *axiQuery.Table, columns map[string]traceColum
 func traceTagsValue(result *axiQuery.Table, columns map[string]traceColumn, row int) any {
 	tags := make([]map[string]any, 0)
 	for fieldIndex, field := range result.Fields {
-		canonicalName, isTraceField := traceFieldAliases[field.Name]
-		if isTraceField && canonicalName != "tags" {
+		alias, isTraceField := traceFieldAliases[field.Name]
+		if isTraceField && alias.canonicalName != "tags" {
 			continue
 		}
 		if fieldIndex >= len(result.Columns) || row >= len(result.Columns[fieldIndex]) {
@@ -303,7 +313,7 @@ func traceLogEntries(value any, fallbackTimestamp float64) []map[string]any {
 
 func traceLogFromMap(value map[string]any, fallbackTimestamp float64) map[string]any {
 	timestamp := fallbackTimestamp
-	for _, key := range []string{"timestamp", "time", "_time"} {
+	for _, key := range []string{"_time", "timestamp", "time", "_sysTime"} {
 		if parsed, ok := traceLogTimestampMillis(value[key], key); ok {
 			timestamp = parsed
 			break
@@ -349,7 +359,7 @@ func traceLogFieldsFromMap(value map[string]any) []map[string]any {
 
 func traceLogReservedField(key string) bool {
 	switch key {
-	case "timestamp", "time", "_time", "name", "event.name", "fields":
+	case "_time", "timestamp", "time", "_sysTime", "name", "event.name", "fields":
 		return true
 	default:
 		return false

@@ -13,10 +13,10 @@ import (
 )
 
 var logFieldAliases = map[string]logFieldAlias{
-	"timestamp": {canonicalName: "timestamp", priority: 0},
-	"_time":     {canonicalName: "timestamp", priority: 1},
-	"time":      {canonicalName: "timestamp", priority: 2},
-	"_systime":  {canonicalName: "timestamp", priority: 3},
+	"_time":     {canonicalName: "timestamp", priority: aplTimePriorityTime},
+	"timestamp": {canonicalName: "timestamp", priority: aplTimePriorityTimestamp},
+	"time":      {canonicalName: "timestamp", priority: aplTimePriorityTimeAlias},
+	"_systime":  {canonicalName: "timestamp", priority: aplTimePrioritySysTime},
 
 	"body":    {canonicalName: "body"},
 	"message": {canonicalName: "body"},
