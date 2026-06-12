@@ -834,6 +834,46 @@ func TestBuildFrameSetsTraceMetadata(t *testing.T) {
 	require.JSONEq(t, `[{"key":"attributes.custom.normalizedDatasetName","value":"axiom-dataset"},{"key":"http.method","value":"POST"}]`, string(*tags))
 }
 
+func TestBuildFrameNormalizesTraceLogs(t *testing.T) {
+	table := query.Table{
+		Fields: []query.Field{
+			{Name: "trace_id", Type: "string"},
+			{Name: "span_id", Type: "string"},
+			{Name: "name", Type: "string"},
+			{Name: "service.name", Type: "string"},
+			{Name: "_time", Type: "datetime"},
+			{Name: "duration", Type: "timespan"},
+			{Name: "events", Type: "unknown"},
+		},
+		Columns: []query.Column{
+			{"trace-1"},
+			{"span-1"},
+			{"GET /"},
+			{"api"},
+			{"2026-06-11T02:19:39Z"},
+			{"666.387µs"},
+			{
+				[]any{
+					map[string]any{
+						"timestamp": "2026-06-11T02:19:40Z",
+						"name":      "exception",
+						"attributes": map[string]any{
+							"exception.message": "boom",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	got, err := buildAPLFrame(context.Background(), &table)
+	require.NoError(t, err)
+
+	logs, ok := got.Fields[8].At(0).(*json.RawMessage)
+	require.True(t, ok)
+	require.JSONEq(t, `[{"fields":[{"key":"exception.message","value":"boom"}],"name":"exception","timestamp":1781144380000}]`, string(*logs))
+}
+
 func TestAPLWideFrameBuilderFillsMissingWithPreviousValue(t *testing.T) {
 	t1 := time.Date(2026, 6, 11, 13, 45, 0, 0, time.UTC)
 	t2 := time.Date(2026, 6, 11, 13, 50, 0, 0, time.UTC)

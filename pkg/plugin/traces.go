@@ -147,7 +147,7 @@ func buildTraceFrame(ctx context.Context, result *axiQuery.Table) (*data.Frame, 
 		}
 		durationField.Append(&duration)
 
-		logsField.Append(traceJSONPtr(traceOptionalJSONValue(result, columns, "logs", row)))
+		logsField.Append(traceJSONPtr(traceLogsValue(traceColumnValue(result, columns, "logs", row), startTime)))
 		tagsField.Append(traceJSONPtr(traceTagsValue(result, columns, row)))
 	}
 
@@ -250,14 +250,6 @@ func traceTagsValue(result *axiQuery.Table, columns map[string]traceColumn, row 
 	return tags
 }
 
-func traceOptionalJSONValue(result *axiQuery.Table, columns map[string]traceColumn, canonicalName string, row int) any {
-	if value := traceColumnValue(result, columns, canonicalName, row); value != nil {
-		return value
-	}
-
-	return []any{}
-}
-
 func traceJSONPtr(value any) *json.RawMessage {
 	b, err := json.Marshal(value)
 	if err != nil {
@@ -266,6 +258,129 @@ func traceJSONPtr(value any) *json.RawMessage {
 	raw := json.RawMessage(b)
 
 	return &raw
+}
+
+func traceLogsValue(value any, fallbackTimestamp float64) []map[string]any {
+	logs := traceLogEntries(value, fallbackTimestamp)
+	if logs == nil {
+		return []map[string]any{}
+	}
+
+	return logs
+}
+
+func traceLogEntries(value any, fallbackTimestamp float64) []map[string]any {
+	switch v := value.(type) {
+	case nil:
+		return nil
+	case string:
+		var decoded any
+		if err := json.Unmarshal([]byte(v), &decoded); err == nil {
+			return traceLogEntries(decoded, fallbackTimestamp)
+		}
+
+		return []map[string]any{traceLogValueFromFields(fallbackTimestamp, "", []map[string]any{{"key": "message", "value": v}})}
+	case []any:
+		logs := make([]map[string]any, 0, len(v))
+		for _, item := range v {
+			logs = append(logs, traceLogEntries(item, fallbackTimestamp)...)
+		}
+
+		return logs
+	case []map[string]any:
+		logs := make([]map[string]any, 0, len(v))
+		for _, item := range v {
+			logs = append(logs, traceLogFromMap(item, fallbackTimestamp))
+		}
+
+		return logs
+	case map[string]any:
+		return []map[string]any{traceLogFromMap(v, fallbackTimestamp)}
+	default:
+		return []map[string]any{traceLogValueFromFields(fallbackTimestamp, "", []map[string]any{{"key": "value", "value": v}})}
+	}
+}
+
+func traceLogFromMap(value map[string]any, fallbackTimestamp float64) map[string]any {
+	timestamp := fallbackTimestamp
+	for _, key := range []string{"timestamp", "time", "_time"} {
+		if parsed, ok := traceLogTimestampMillis(value[key], key); ok {
+			timestamp = parsed
+			break
+		}
+	}
+
+	name := ""
+	for _, key := range []string{"name", "event.name"} {
+		if value[key] != nil {
+			name = traceValueString(value[key])
+			break
+		}
+	}
+
+	fields := make([]map[string]any, 0)
+	if fieldValue, ok := value["fields"]; ok {
+		fields = append(fields, traceKeyValuePairs(fieldValue, "fields")...)
+	}
+	if len(fields) == 0 {
+		fields = append(fields, traceLogFieldsFromMap(value)...)
+	}
+
+	return traceLogValueFromFields(timestamp, name, fields)
+}
+
+func traceLogFieldsFromMap(value map[string]any) []map[string]any {
+	keys := make([]string, 0, len(value))
+	for key := range value {
+		if traceLogReservedField(key) {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	fields := make([]map[string]any, 0, len(keys))
+	for _, key := range keys {
+		fields = append(fields, traceKeyValuePairs(value[key], key)...)
+	}
+
+	return fields
+}
+
+func traceLogReservedField(key string) bool {
+	switch key {
+	case "timestamp", "time", "_time", "name", "event.name", "fields":
+		return true
+	default:
+		return false
+	}
+}
+
+func traceLogValueFromFields(timestamp float64, name string, fields []map[string]any) map[string]any {
+	if fields == nil {
+		fields = []map[string]any{}
+	}
+	logEntry := map[string]any{
+		"timestamp": timestamp,
+		"fields":    fields,
+	}
+	if name != "" {
+		logEntry["name"] = name
+	}
+
+	return logEntry
+}
+
+func traceLogTimestampMillis(value any, sourceName string) (float64, bool) {
+	if value == nil {
+		return 0, false
+	}
+
+	if parsed, ok := traceStartTimeMillis(value, sourceName); ok {
+		return parsed, true
+	}
+
+	return 0, false
 }
 
 func traceKeyValuePairs(value any, defaultKey string) []map[string]any {
