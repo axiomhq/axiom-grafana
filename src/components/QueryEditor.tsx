@@ -20,6 +20,15 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
     });
   };
 
+  const runMplQuery = (mpl: string) => {
+    onChange({
+      ...query,
+      kind: 'mpl',
+      query: mpl,
+    });
+    onRunQuery();
+  };
+
   return (
     <Stack direction={'column'}>
       <Stack>
@@ -35,15 +44,8 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
           {query.kind === 'mpl' ? (
             <MplQueryCodeMirror
               value={queryText}
-              onBlur={() => {}}
-              onRunQuery={() => {
-                onChange({
-                  ...query,
-                  kind: 'mpl',
-                  query: queryText,
-                });
-                onRunQuery();
-              }}
+              onBlur={runMplQuery}
+              onRunQuery={runMplQuery}
               onChange={(mpl) => {
                 onChange({ ...query, query: mpl });
               }}

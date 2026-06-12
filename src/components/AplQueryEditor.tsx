@@ -92,6 +92,7 @@ export function APLQueryEdtior({
       onBlur={(apl) => {
         onChange(apl);
         setAplEditorContent(apl);
+        onRunQuery();
       }}
       height="140px"
       width="500"

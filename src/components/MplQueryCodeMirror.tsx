@@ -80,8 +80,8 @@ function getMplTokenStyles(theme: GrafanaTheme2) {
 interface Props {
   value: string;
   onChange: (value: string) => void;
-  onBlur?: () => void;
-  onRunQuery?: () => void;
+  onBlur?: (value: string) => void;
+  onRunQuery?: (value: string) => void;
   datasource: DataSource;
 }
 
@@ -130,8 +130,8 @@ export function MplQueryCodeMirror({ value, onChange, onBlur, onRunQuery, dataso
             indentWithTab,
             {
               key: 'Mod-Enter',
-              run: () => {
-                onRunQueryRef.current?.();
+              run: (view) => {
+                onRunQueryRef.current?.(view.state.doc.toString());
                 return true;
               },
             },
@@ -150,8 +150,8 @@ export function MplQueryCodeMirror({ value, onChange, onBlur, onRunQuery, dataso
           }
         }),
         EditorView.domEventHandlers({
-          blur: () => {
-            onBlurRef.current?.();
+          blur: (_, view) => {
+            onBlurRef.current?.(view.state.doc.toString());
             return false;
           },
         }),
