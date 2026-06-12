@@ -34,11 +34,12 @@ type Datasource struct {
 }
 
 type queryModel struct {
-	APL                 *string `json:"apl"`
-	Kind                *string `json:"kind"`
-	Query               *string `json:"query"`
-	SupportingQueryType *string `json:"supportingQueryType"`
-	Totals              bool    `json:"totals"`
+	APL                     *string `json:"apl"`
+	Kind                    *string `json:"kind"`
+	Query                   *string `json:"query"`
+	SupportingQueryType     *string `json:"supportingQueryType"`
+	Totals                  bool    `json:"totals"`
+	IncludeTotalsTableFrame bool    `json:"includeTotalsTableFrame"`
 }
 
 // NewDatasource creates a new datasource instance.
@@ -177,7 +178,7 @@ func (d *Datasource) queryEvents(ctx context.Context, q *queryModel, startTime, 
 		frameOptions.Query = *q.Query
 	}
 
-	frames, err := newAPLResponseFrameBuilder(q.Totals).BuildFrames(ctx, result, frameOptions)
+	frames, err := newAPLResponseFrameBuilder(q.Totals, q.IncludeTotalsTableFrame).BuildFrames(ctx, result, frameOptions)
 	if err != nil {
 		return nil, err
 	}

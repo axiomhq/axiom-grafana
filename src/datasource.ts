@@ -1,4 +1,4 @@
-import { DataFrame, DataQueryRequest, DataQueryResponse, DataSourceInstanceSettings, ScopedVars } from '@grafana/data';
+import { CoreApp, DataFrame, DataQueryRequest, DataQueryResponse, DataSourceInstanceSettings, ScopedVars } from '@grafana/data';
 import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
 
 import { AxiomQuery, AxiomDataSourceOptions } from './types';
@@ -22,6 +22,18 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
       ...query,
       apl: query.query ? templateSrv.replace(query.query, scopedVars) : '',
     };
+  }
+
+  query(request: DataQueryRequest<AxiomQuery>) {
+    const includeTotalsTableFrame = request.app === CoreApp.Explore;
+
+    return super.query({
+      ...request,
+      targets: request.targets.map((query) => ({
+        ...query,
+        includeTotalsTableFrame: includeTotalsTableFrame && query.kind !== 'mpl' && !query.totals,
+      })),
+    });
   }
 
   private timeRangeParams(): Record<string, string> {

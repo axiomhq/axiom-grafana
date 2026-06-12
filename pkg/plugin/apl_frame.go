@@ -22,12 +22,19 @@ type aplFrameBuilder interface {
 }
 
 type aplResponseFrameBuilder struct {
-	totals bool
+	totals                  bool
+	includeTotalsTableFrame bool
 }
 
-func newAPLResponseFrameBuilder(totals bool) aplResponseFrameBuilder {
+func newAPLResponseFrameBuilder(totals bool, includeTotalsTableFrame ...bool) aplResponseFrameBuilder {
+	includeTotalsFrame := false
+	if len(includeTotalsTableFrame) > 0 {
+		includeTotalsFrame = includeTotalsTableFrame[0]
+	}
+
 	return aplResponseFrameBuilder{
-		totals: totals,
+		totals:                  totals,
+		includeTotalsTableFrame: includeTotalsFrame,
 	}
 }
 
@@ -49,19 +56,19 @@ func (b aplResponseFrameBuilder) BuildFrames(ctx context.Context, result axiomap
 	}
 
 	if b.shouldBuildTimeSeries(result) {
-		frames, err := aplTimeSeriesFrameBuilder{}.BuildFrames(ctx, &result.Tables[0], opts)
+		graphFrame, err := aplTimeSeriesFrameBuilder{}.Build(ctx, &result.Tables[0], opts)
 		if err != nil {
 			return nil, err
 		}
-		if len(frames) > 1 && len(result.Tables) > 1 {
-			totalsFrame, err := aplTableFrameBuilder{}.Build(ctx, &result.Tables[1], opts)
-			if err != nil {
-				return nil, err
-			}
-			totalsFrame.Meta = cloneFrameMeta(totalsFrame.Meta)
-			applyPreferredVisualization(totalsFrame, data.VisTypeTable)
-			frames[1] = totalsFrame
+		frames := []*data.Frame{graphFrame}
+		if !b.includeTotalsTableFrame {
+			return frames, nil
 		}
+		tableFrame, err := b.timeSeriesTableFrame(ctx, result, opts)
+		if err != nil {
+			return nil, err
+		}
+		frames = append(frames, tableFrame)
 		return frames, nil
 	}
 
@@ -80,6 +87,22 @@ func (b aplResponseFrameBuilder) BuildFrames(ctx context.Context, result axiomap
 
 func (b aplResponseFrameBuilder) shouldBuildTimeSeries(result axiomapi.APLQueryResponse) bool {
 	return !b.totals && len(result.Tables) > 1
+}
+
+func (b aplResponseFrameBuilder) timeSeriesTableFrame(ctx context.Context, result axiomapi.APLQueryResponse, opts aplFrameOptions) (*data.Frame, error) {
+	table := &result.Tables[0]
+	if len(result.Tables) > 1 {
+		table = &result.Tables[1]
+	}
+
+	frame, err := aplTableFrameBuilder{}.Build(ctx, table, opts)
+	if err != nil {
+		return nil, err
+	}
+	frame.Meta = cloneFrameMeta(frame.Meta)
+	applyPreferredVisualization(frame, data.VisTypeTable)
+
+	return frame, nil
 }
 
 func buildAPLFrame(ctx context.Context, result *axiQuery.Table, opts ...aplFrameOptions) (*data.Frame, error) {

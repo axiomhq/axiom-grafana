@@ -343,7 +343,7 @@ func TestAPLResponseFrameBuilderBuildsTimeSeriesFrame(t *testing.T) {
 	require.Len(t, got.Fields, 3)
 }
 
-func TestAPLResponseFrameBuilderBuildFramesReturnsGraphAndTableForTimeSeries(t *testing.T) {
+func TestAPLResponseFrameBuilderBuildFramesReturnsGraphOnlyForTimeSeriesByDefault(t *testing.T) {
 	v1 := float64(100)
 	v2 := float64(200)
 	result := axiomapi.APLQueryResponse{
@@ -374,6 +374,44 @@ func TestAPLResponseFrameBuilderBuildFramesReturnsGraphAndTableForTimeSeries(t *
 	}
 
 	frames, err := newAPLResponseFrameBuilder(false).BuildFrames(context.Background(), result, aplFrameOptions{})
+	require.NoError(t, err)
+	require.Len(t, frames, 1)
+	require.NotNil(t, frames[0].Meta)
+	require.Equal(t, data.FrameTypeTimeSeriesWide, frames[0].Meta.Type)
+	require.EqualValues(t, data.VisTypeGraph, frames[0].Meta.PreferredVisualization)
+}
+
+func TestAPLResponseFrameBuilderBuildFramesReturnsTotalsTableWhenRequested(t *testing.T) {
+	v1 := float64(100)
+	v2 := float64(200)
+	result := axiomapi.APLQueryResponse{
+		Tables: []query.Table{
+			{
+				Fields: []query.Field{
+					{Name: "_time", Type: "datetime"},
+					{Name: "method", Type: "string"},
+					{Name: "count_", Type: "integer"},
+				},
+				Columns: []query.Column{
+					{"2026-06-11T13:45:00Z", "2026-06-11T13:45:00Z"},
+					{"GET", "POST"},
+					{v1, v2},
+				},
+			},
+			{
+				Fields: []query.Field{
+					{Name: "method", Type: "string"},
+					{Name: "count_", Type: "integer"},
+				},
+				Columns: []query.Column{
+					{"GET", "POST"},
+					{v1, v2},
+				},
+			},
+		},
+	}
+
+	frames, err := newAPLResponseFrameBuilder(false, true).BuildFrames(context.Background(), result, aplFrameOptions{})
 	require.NoError(t, err)
 	require.Len(t, frames, 2)
 
@@ -416,7 +454,7 @@ func TestAPLResponseFrameBuilderBuildFramesReturnsGraphAndTableForWideTimeSeries
 		},
 	}
 
-	frames, err := newAPLResponseFrameBuilder(false).BuildFrames(context.Background(), result, aplFrameOptions{})
+	frames, err := newAPLResponseFrameBuilder(false, true).BuildFrames(context.Background(), result, aplFrameOptions{})
 	require.NoError(t, err)
 	require.Len(t, frames, 2)
 
