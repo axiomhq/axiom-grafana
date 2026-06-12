@@ -9,18 +9,11 @@ import { APLQueryEdtior } from './AplQueryEditor';
 type Props = QueryEditorProps<DataSource, AxiomQuery, AxiomDataSourceOptions>;
 
 export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) {
-  // We need to use a ref for the totals because the function that is called on
-  // Cmd/Ctrl+Enter only has access to a reference of the first render because
-  // it runs when Monaco is initialized.
-  const totals = React.useRef(query.totals);
-
   // const [queryStr, setQueryStr] = React.useState(!query.query ? query.apl : query.query);
   // if query.query is still empty, fallback to the deprecated .apl value
   const queryText = !query.query ? query.apl : query.query;
-  console.log({ stored: query.apl, query: queryText });
 
   const onTotalsChange = (e: FormEvent<HTMLInputElement>) => {
-    totals.current = e.currentTarget.checked;
     onChange({
       ...query,
       totals: e.currentTarget.checked,
@@ -59,11 +52,9 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
           ) : (
             <APLQueryEdtior
               onChange={(apl) => {
-                console.log('onBlur: changing apl', apl);
                 onChange({ ...query, query: apl });
               }}
               value={queryText}
-              totals={totals.current}
               datasource={datasource}
               onRunQuery={onRunQuery}
             />

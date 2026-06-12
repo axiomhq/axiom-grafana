@@ -132,7 +132,7 @@ func NewClient(config Config) *Client {
 
 func (api *Client) DatasetFields(ctx context.Context) ([]*DatasetFields, error) {
 	endpoint := "/v1/datasets/_fields"
-	path, err := url.JoinPath(api.edgeURL, endpoint)
+	path, err := url.JoinPath(api.apiURL, endpoint)
 	if err != nil {
 		return nil, err
 	}

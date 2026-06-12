@@ -2,6 +2,7 @@ import React from 'react';
 import { CodeEditor } from '@grafana/ui';
 import { DatasetFields, mapDatasetInfosToSchema } from '../schema';
 import { DataSource } from '../datasource';
+import { registerKustoLanguage } from '../monaco/registerKustoLanguage';
 
 const workersAssets = require('@axiomhq/axiom-frontend-workers');
 
@@ -56,13 +57,11 @@ export function APLQueryEdtior({
   value,
   onRunQuery,
   onChange,
-  totals,
   datasource
 }: {
   value: string;
   onChange: (value: string) => void;
   onRunQuery: () => void;
-  totals: boolean;
   datasource: DataSource;
 }) {
   const [aplEditorContent, setAplEditorContent] = React.useState('');
@@ -91,7 +90,6 @@ export function APLQueryEdtior({
   return (
     <CodeEditor
       onBlur={(apl) => {
-        console.log('onBlur: changing apl', apl);
         onChange(apl);
         setAplEditorContent(apl);
       }}
@@ -101,8 +99,18 @@ export function APLQueryEdtior({
       language="kusto"
       showLineNumbers={true}
       showMiniMap={false}
+      onBeforeEditorMount={(monaco) => {
+        registerKustoLanguage(monaco);
+      }}
       onEditorDidMount={async (editor, monaco) => {
+        await registerKustoLanguage(monaco);
+
         const kustoLanguageId = 'kusto';
+        const model = editor.getModel();
+        if (model && model.getLanguageId?.() !== kustoLanguageId) {
+          monaco.editor.setModelLanguage(model, kustoLanguageId);
+        }
+
         const kustoLanguage = monaco.languages.getLanguages().find((l) => l.id === kustoLanguageId);
         if (kustoLanguage) {
           // If the kusto language is already registered, we can proceed immediately
@@ -119,7 +127,6 @@ export function APLQueryEdtior({
               resolve(undefined);
               setTimeout(() => {
                 setAplEditorContent(value);
-                console.log('is it loaded?');
                 addPlaceholder(editor, monaco);
               }, 200);
             });
@@ -132,7 +139,6 @@ export function APLQueryEdtior({
           keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
           run: async function (ed) {
             const apl = ed.getValue();
-            console.log('changing apl', apl);
             onChange(apl);
             setAplEditorContent(apl);
             onRunQuery();
