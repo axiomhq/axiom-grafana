@@ -77,9 +77,9 @@ type traceColumn struct {
 	name  string
 }
 
-type traceFrameBuilder struct{}
+type aplTraceFrameBuilder struct{}
 
-func (traceFrameBuilder) Build(ctx context.Context, result *axiQuery.Table, opts aplFrameOptions) (*data.Frame, error) {
+func (aplTraceFrameBuilder) Build(ctx context.Context, result *axiQuery.Table, opts aplFrameOptions) (*data.Frame, error) {
 	frame, err := buildTraceFrame(ctx, result)
 	if err != nil {
 		return nil, err

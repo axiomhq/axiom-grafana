@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -150,6 +151,81 @@ func TestResourceHandlerFetchesEscapedMetricAutocompleteValues(t *testing.T) {
 	require.JSONEq(t, `["service.name"]`, string(tagsResp.Body))
 }
 
+func TestLogsVolumeAPLUsesTimeBeforeSysTime(t *testing.T) {
+	got := logsVolumeAPL("['logs'] | where level == 'error';", time.Minute)
+
+	require.Contains(t, got, "coalesce(_time, _sysTime)")
+	require.Contains(t, got, "bin(_axiom_logs_volume_time, 1m)")
+	require.NotContains(t, got, ";)")
+}
+
+func TestQueryLogsVolumeReturnsFullRangeHistogramFrame(t *testing.T) {
+	start := time.Date(2026, 6, 11, 2, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 6, 11, 3, 0, 0, 0, time.UTC)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/query/_apl", r.URL.Path)
+		require.Equal(t, "tabular", r.URL.Query().Get("format"))
+
+		var body axiomapi.APLQueryRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		require.NotNil(t, body.APL)
+		require.True(t, strings.Contains(*body.APL, "coalesce(_time, _sysTime)"))
+		require.True(t, strings.Contains(*body.APL, "bin(_axiom_logs_volume_time, 5m)"))
+		require.Equal(t, start, body.StartTime)
+		require.Equal(t, end, body.EndTime)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{
+			"format":"tabular",
+			"tables":[{
+				"fields":[{"name":"_time","type":"datetime"},{"name":"count_","type":"integer"}],
+				"columns":[["2026-06-11T02:00:00Z","2026-06-11T02:05:00Z"],[3,7]]
+			}]
+		}`))
+		require.NoError(t, err)
+	}))
+	defer upstream.Close()
+
+	queryText := "['logs'] | where level == 'error'"
+	ds := Datasource{
+		api: axiomapi.NewClient(axiomapi.Config{
+			APIURL:  upstream.URL,
+			EdgeURL: upstream.URL,
+		}),
+	}
+
+	resp, err := ds.queryLogsVolume(
+		context.Background(),
+		&queryModel{Query: &queryText, SupportingQueryType: stringPtr(supplementaryQueryTypeLogsVolume)},
+		backend.DataQuery{
+			RefID:         "log-volume-A",
+			QueryType:     logsVolumeQueryType,
+			TimeRange:     backend.TimeRange{From: start, To: end},
+			Interval:      5 * time.Minute,
+			MaxDataPoints: 100,
+		},
+		"Axiom",
+	)
+	require.NoError(t, err)
+	require.Len(t, resp.Frames, 1)
+
+	frame := resp.Frames[0]
+	require.Equal(t, "Logs volume", frame.Name)
+	require.Equal(t, "log-volume-A", frame.RefID)
+	require.NotNil(t, frame.Meta)
+	require.Equal(t, data.FrameTypeTimeSeriesWide, frame.Meta.Type)
+	require.Equal(t, data.FrameTypeVersion{0, 1}, frame.Meta.TypeVersion)
+	require.EqualValues(t, data.VisTypeGraph, frame.Meta.PreferredVisualization)
+	require.Len(t, frame.Fields, 2)
+	require.Equal(t, data.FieldTypeTime, frame.Fields[0].Type())
+	require.Equal(t, data.FieldTypeNullableFloat64, frame.Fields[1].Type())
+
+	custom, ok := frame.Meta.Custom.(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "FullRange", custom["logsVolumeType"])
+	require.Equal(t, "Axiom", custom["datasourceName"])
+}
+
 func callResource(t *testing.T, handler backend.CallResourceHandler, path string) *backend.CallResourceResponse {
 	t.Helper()
 
@@ -196,6 +272,230 @@ func TestBuildFrame(t *testing.T) {
 			t.Logf("%#v", got)
 		})
 	}
+}
+
+func TestAPLResponseFrameBuilderBuildsTimeSeriesFrame(t *testing.T) {
+	v1 := float64(100)
+	v2 := float64(200)
+	v3 := float64(110)
+	result := axiomapi.APLQueryResponse{
+		Tables: []query.Table{
+			{
+				Fields: []query.Field{
+					{Name: "_time", Type: "datetime"},
+					{Name: "Lambda Name", Type: "string"},
+					{Name: "Duration", Type: "float"},
+				},
+				Columns: []query.Column{
+					{"2026-06-11T13:45:00Z", "2026-06-11T13:50:00Z", "2026-06-11T13:55:00Z"},
+					{"a", "b", "a"},
+					{v1, v2, v3},
+				},
+			},
+			{
+				Fields: []query.Field{
+					{Name: "Lambda Name", Type: "string"},
+					{Name: "Duration", Type: "float"},
+				},
+				Columns: []query.Column{
+					{"a", "b"},
+					{v3, v2},
+				},
+			},
+		},
+	}
+
+	got, err := newAPLResponseFrameBuilder(false).Build(context.Background(), result, aplFrameOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, got.Meta)
+	require.EqualValues(t, data.VisTypeGraph, got.Meta.PreferredVisualization)
+	require.Len(t, got.Fields, 3)
+}
+
+func TestAPLResponseFrameBuilderBuildsTraceFrame(t *testing.T) {
+	result := axiomapi.APLQueryResponse{
+		Tables: []query.Table{
+			{
+				Fields: []query.Field{
+					{Name: "trace_id", Type: "string"},
+					{Name: "span_id", Type: "string"},
+					{Name: "name", Type: "string"},
+					{Name: "service.name", Type: "string"},
+					{Name: "_time", Type: "datetime"},
+					{Name: "duration", Type: "timespan"},
+				},
+				Columns: []query.Column{
+					{"trace-1"},
+					{"span-1"},
+					{"GET /"},
+					{"api"},
+					{"2026-06-11T02:19:39Z"},
+					{"666.387µs"},
+				},
+			},
+		},
+	}
+
+	got, err := newAPLResponseFrameBuilder(false).Build(context.Background(), result, aplFrameOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "Trace", got.Name)
+	require.NotNil(t, got.Meta)
+	require.EqualValues(t, data.VisTypeTrace, got.Meta.PreferredVisualization)
+}
+
+func TestAPLResponseFrameBuilderBuildsLogsFrame(t *testing.T) {
+	result := axiomapi.APLQueryResponse{
+		Tables: []query.Table{
+			{
+				Fields: []query.Field{
+					{Name: "_time", Type: "datetime"},
+					{Name: "message", Type: "string"},
+					{Name: "level", Type: "string"},
+					{Name: "_id", Type: "string"},
+					{Name: "service.name", Type: "string"},
+				},
+				Columns: []query.Column{
+					{"2026-06-11T02:19:39Z"},
+					{"hello"},
+					{"info"},
+					{"abc-123"},
+					{"api"},
+				},
+			},
+		},
+	}
+
+	got, err := newAPLResponseFrameBuilder(false).Build(context.Background(), result, aplFrameOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, got.Meta)
+	require.Equal(t, data.FrameTypeLogLines, got.Meta.Type)
+	require.Equal(t, data.FrameTypeVersion{0, 0}, got.Meta.TypeVersion)
+	require.EqualValues(t, data.VisTypeLogs, got.Meta.PreferredVisualization)
+	require.Len(t, got.Fields, 5)
+	require.Equal(t, "timestamp", got.Fields[0].Name)
+	require.Equal(t, "body", got.Fields[1].Name)
+	require.Equal(t, "severity", got.Fields[2].Name)
+	require.Equal(t, "id", got.Fields[3].Name)
+	require.Equal(t, "labels", got.Fields[4].Name)
+	require.Equal(t, data.FieldTypeTime, got.Fields[0].Type())
+	require.Equal(t, data.FieldTypeString, got.Fields[1].Type())
+	require.Equal(t, data.FieldTypeString, got.Fields[2].Type())
+	require.Equal(t, data.FieldTypeString, got.Fields[3].Type())
+
+	require.Equal(t, "hello", got.Fields[1].At(0))
+	require.Equal(t, "info", got.Fields[2].At(0))
+	require.Equal(t, "abc-123", got.Fields[3].At(0))
+
+	labels, ok := got.Fields[4].At(0).(json.RawMessage)
+	require.True(t, ok)
+	require.JSONEq(t, `{"service.name":"api"}`, string(labels))
+}
+
+func TestAPLResponseFrameBuilderUsesTimeBeforeSysTimeForLogs(t *testing.T) {
+	result := axiomapi.APLQueryResponse{
+		Tables: []query.Table{
+			{
+				Fields: []query.Field{
+					{Name: "_sysTime", Type: "datetime"},
+					{Name: "_time", Type: "datetime"},
+					{Name: "message", Type: "string"},
+				},
+				Columns: []query.Column{
+					{"2026-06-11T02:19:39Z"},
+					{"2026-06-11T02:20:39Z"},
+					{"hello"},
+				},
+			},
+		},
+	}
+
+	got, err := newAPLResponseFrameBuilder(false).Build(context.Background(), result, aplFrameOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, got.Meta)
+	require.Equal(t, data.FrameTypeLogLines, got.Meta.Type)
+
+	timestamp, ok := got.Fields[0].At(0).(time.Time)
+	require.True(t, ok)
+	require.Equal(t, time.Date(2026, 6, 11, 2, 20, 39, 0, time.UTC), timestamp)
+}
+
+func TestAPLResponseFrameBuilderUsesSysTimeFallbackForLogs(t *testing.T) {
+	result := axiomapi.APLQueryResponse{
+		Tables: []query.Table{
+			{
+				Fields: []query.Field{
+					{Name: "_sysTime", Type: "datetime"},
+					{Name: "message", Type: "string"},
+				},
+				Columns: []query.Column{
+					{"2026-06-11T02:19:39Z"},
+					{"hello"},
+				},
+			},
+		},
+	}
+
+	got, err := newAPLResponseFrameBuilder(false).Build(context.Background(), result, aplFrameOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, got.Meta)
+	require.Equal(t, data.FrameTypeLogLines, got.Meta.Type)
+
+	timestamp, ok := got.Fields[0].At(0).(time.Time)
+	require.True(t, ok)
+	require.Equal(t, time.Date(2026, 6, 11, 2, 19, 39, 0, time.UTC), timestamp)
+}
+
+func TestAPLResponseFrameBuilderFallsBackToSysTimeWhenTimeIsNullForLogs(t *testing.T) {
+	result := axiomapi.APLQueryResponse{
+		Tables: []query.Table{
+			{
+				Fields: []query.Field{
+					{Name: "_time", Type: "datetime"},
+					{Name: "_sysTime", Type: "datetime"},
+					{Name: "_raw", Type: "string"},
+				},
+				Columns: []query.Column{
+					{nil},
+					{"2026-06-11T02:19:39Z"},
+					{"raw log line"},
+				},
+			},
+		},
+	}
+
+	got, err := newAPLResponseFrameBuilder(false).Build(context.Background(), result, aplFrameOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, got.Meta)
+	require.Equal(t, data.FrameTypeLogLines, got.Meta.Type)
+
+	timestamp, ok := got.Fields[0].At(0).(time.Time)
+	require.True(t, ok)
+	require.Equal(t, time.Date(2026, 6, 11, 2, 19, 39, 0, time.UTC), timestamp)
+	require.Equal(t, "raw log line", got.Fields[1].At(0))
+}
+
+func TestAPLResponseFrameBuilderBuildsGenericEventsFrame(t *testing.T) {
+	result := axiomapi.APLQueryResponse{
+		Tables: []query.Table{
+			{
+				Fields: []query.Field{
+					{Name: "_time", Type: "datetime"},
+					{Name: "count_", Type: "integer"},
+				},
+				Columns: []query.Column{
+					{"2026-06-11T02:19:39Z"},
+					{float64(10)},
+				},
+			},
+		},
+	}
+
+	got, err := newAPLResponseFrameBuilder(false).Build(context.Background(), result, aplFrameOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, got.Meta)
+	require.EqualValues(t, data.VisTypeTable, got.Meta.PreferredVisualization)
+	require.Empty(t, got.Meta.Type)
+	require.Len(t, got.Fields, 2)
 }
 
 func TestBuildFrameStringifiesUnknownArrayFields(t *testing.T) {
@@ -281,14 +581,14 @@ func TestBuildFrameInfersUnknownTimeField(t *testing.T) {
 	got, err := buildAPLFrame(context.Background(), &table)
 	require.NoError(t, err)
 	require.Len(t, got.Fields, 2)
-	require.Equal(t, data.FieldTypeTime, got.Fields[0].Type())
+	require.True(t, got.Fields[0].Type().Time())
 }
 
 func TestBuildFrameTreatsTimeFieldAsDatetimeRegardlessOfDeclaredType(t *testing.T) {
 	table := query.Table{
 		Fields: []query.Field{
 			{Name: "_time", Type: "string"},
-			{Name: "message", Type: "string"},
+			{Name: "path", Type: "string"},
 		},
 		Columns: []query.Column{
 			{
@@ -303,7 +603,33 @@ func TestBuildFrameTreatsTimeFieldAsDatetimeRegardlessOfDeclaredType(t *testing.
 	got, err := buildAPLFrame(context.Background(), &table)
 	require.NoError(t, err)
 	require.Len(t, got.Fields, 2)
-	require.Equal(t, data.FieldTypeTime, got.Fields[0].Type())
+	require.True(t, got.Fields[0].Type().Time())
+}
+
+func TestBuildFrameAllowsNullDatetimeValues(t *testing.T) {
+	table := query.Table{
+		Fields: []query.Field{
+			{Name: "_time", Type: "datetime"},
+			{Name: "path", Type: "string"},
+		},
+		Columns: []query.Column{
+			{
+				nil,
+				"2026-06-10T22:38:00Z",
+			},
+			{
+				"first",
+				"second",
+			},
+		},
+	}
+
+	got, err := buildAPLFrame(context.Background(), &table)
+	require.NoError(t, err)
+	require.Len(t, got.Fields, 2)
+	require.Equal(t, data.FieldTypeNullableTime, got.Fields[0].Type())
+	require.True(t, got.Fields[0].NilAt(0))
+	require.False(t, got.Fields[0].NilAt(1))
 }
 
 func TestBuildFrameAppliesFieldMetaMapUnitToAggregatedField(t *testing.T) {
@@ -508,7 +834,7 @@ func TestBuildFrameSetsTraceMetadata(t *testing.T) {
 	require.JSONEq(t, `[{"key":"attributes.custom.normalizedDatasetName","value":"axiom-dataset"},{"key":"http.method","value":"POST"}]`, string(*tags))
 }
 
-func TestLongToWideFrameFillsMissingWithPreviousValue(t *testing.T) {
+func TestAPLWideFrameBuilderFillsMissingWithPreviousValue(t *testing.T) {
 	t1 := time.Date(2026, 6, 11, 13, 45, 0, 0, time.UTC)
 	t2 := time.Date(2026, 6, 11, 13, 50, 0, 0, time.UTC)
 	t3 := time.Date(2026, 6, 11, 13, 55, 0, 0, time.UTC)
@@ -524,7 +850,7 @@ func TestLongToWideFrameFillsMissingWithPreviousValue(t *testing.T) {
 	)
 	longFrame.Fields[2].Config = &data.FieldConfig{Unit: "ms"}
 
-	wideFrame, err := longToWideFrame(longFrame)
+	wideFrame, err := aplWideFrameBuilder{}.Build(longFrame)
 	require.NoError(t, err)
 	require.Len(t, wideFrame.Fields, 3)
 
@@ -545,11 +871,11 @@ func TestLongToWideFrameFillsMissingWithPreviousValue(t *testing.T) {
 	require.Equal(t, float64(100), *filledValue)
 }
 
-func TestBuildMetricsFrameSetsDisplayNameFromLabels(t *testing.T) {
+func TestMetricsFrameBuilderSetsDisplayNameFromLabels(t *testing.T) {
 	v1 := float64(0.1)
 	v2 := float64(0.2)
 
-	frame := buildMetricsFrame(
+	frame := newMetricsFrameBuilder(axiomapi.MetricsQueryMetadata{Unit: "{cpu}"}, "A").Build(
 		axiomapi.MetricsQuerySeries{
 			Resolution: 60,
 			Start:      1781186400,
@@ -561,8 +887,6 @@ func TestBuildMetricsFrameSetsDisplayNameFromLabels(t *testing.T) {
 			},
 			Data: []*float64{&v1, &v2},
 		},
-		axiomapi.MetricsQueryMetadata{Unit: "{cpu}"},
-		"A",
 	)
 
 	require.Equal(t, "A", frame.RefID)
@@ -578,18 +902,16 @@ func TestBuildMetricsFrameSetsDisplayNameFromLabels(t *testing.T) {
 	require.Equal(t, "{cpu}", frame.Fields[1].Config.Unit)
 }
 
-func TestBuildMetricsFrameSetsDisplayNameFromRefIDWhenTagsAreEmpty(t *testing.T) {
+func TestMetricsFrameBuilderSetsDisplayNameFromRefIDWhenTagsAreEmpty(t *testing.T) {
 	v1 := float64(0.1)
 
-	frame := buildMetricsFrame(
+	frame := newMetricsFrameBuilder(axiomapi.MetricsQueryMetadata{}, "A").Build(
 		axiomapi.MetricsQuerySeries{
 			Resolution: 60,
 			Start:      1781186400,
 			Metric:     "k8s.pod.cpu.usage",
 			Data:       []*float64{&v1},
 		},
-		axiomapi.MetricsQueryMetadata{},
-		"A",
 	)
 
 	require.Len(t, frame.Fields, 2)

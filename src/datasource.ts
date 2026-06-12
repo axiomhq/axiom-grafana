@@ -4,6 +4,9 @@ import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
 import { AxiomQuery, AxiomDataSourceOptions } from './types';
 import { lastValueFrom } from 'rxjs';
 
+const SUPPLEMENTARY_QUERY_TYPE_LOGS_VOLUME = 'LogsVolume';
+const LOGS_VOLUME_QUERY_TYPE = 'logs-volume';
+
 export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourceOptions> {
   url?: string;
 
@@ -65,6 +68,43 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
 
   getQueryDisplayText(query: AxiomQuery) {
     return query.query;
+  }
+
+  getSupportedSupplementaryQueryTypes() {
+    return [SUPPLEMENTARY_QUERY_TYPE_LOGS_VOLUME];
+  }
+
+  getSupplementaryQuery(options: { type: string }, originalQuery: AxiomQuery): AxiomQuery | undefined {
+    if (options.type !== SUPPLEMENTARY_QUERY_TYPE_LOGS_VOLUME || originalQuery.hide || originalQuery.kind === 'mpl') {
+      return undefined;
+    }
+
+    return {
+      ...originalQuery,
+      refId: `log-volume-${originalQuery.refId}`,
+      queryType: LOGS_VOLUME_QUERY_TYPE,
+      supportingQueryType: SUPPLEMENTARY_QUERY_TYPE_LOGS_VOLUME,
+      totals: false,
+    };
+  }
+
+  getSupplementaryRequest(type: string, request: DataQueryRequest<AxiomQuery>, options?: { type: string }) {
+    if (type !== SUPPLEMENTARY_QUERY_TYPE_LOGS_VOLUME) {
+      return undefined;
+    }
+
+    const targets = request.targets
+      .map((query) => this.getSupplementaryQuery(options || { type }, query))
+      .filter((query): query is AxiomQuery => Boolean(query));
+
+    if (!targets.length) {
+      return undefined;
+    }
+
+    return {
+      ...request,
+      targets,
+    };
   }
 
   // metrics

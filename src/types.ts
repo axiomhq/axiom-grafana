@@ -5,6 +5,7 @@ export interface AxiomQuery extends DataQuery {
   query: string;
   apl: string;
   totals: boolean;
+  supportingQueryType?: 'LogsVolume';
   startTime?: string;
   endTime?: string;
 }

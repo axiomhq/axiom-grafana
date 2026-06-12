@@ -21,22 +21,88 @@ type aplFrameBuilder interface {
 	Build(context.Context, *axiQuery.Table, aplFrameOptions) (*data.Frame, error)
 }
 
+type aplResponseFrameBuilder struct {
+	totals bool
+}
+
+func newAPLResponseFrameBuilder(totals bool) aplResponseFrameBuilder {
+	return aplResponseFrameBuilder{
+		totals: totals,
+	}
+}
+
+func (b aplResponseFrameBuilder) Build(ctx context.Context, result axiomapi.APLQueryResponse, opts aplFrameOptions) (*data.Frame, error) {
+	if len(result.Tables) == 0 {
+		return nil, fmt.Errorf("query returned no tables")
+	}
+
+	if b.shouldBuildTimeSeries(result) {
+		return aplTimeSeriesFrameBuilder{}.Build(ctx, &result.Tables[0], opts)
+	}
+
+	table := &result.Tables[0]
+	if b.totals && len(result.Tables) > 1 {
+		table = &result.Tables[1]
+	}
+
+	return newAPLEventFrameBuilder(ctx, table.Fields).Build(ctx, table, opts)
+}
+
+func (b aplResponseFrameBuilder) shouldBuildTimeSeries(result axiomapi.APLQueryResponse) bool {
+	return !b.totals && len(result.Tables) > 1
+}
+
 func buildAPLFrame(ctx context.Context, result *axiQuery.Table, opts ...aplFrameOptions) (*data.Frame, error) {
 	frameOptions := aplFrameOptions{}
 	if len(opts) > 0 {
 		frameOptions = opts[0]
 	}
 
-	builder := newAPLFrameBuilder(ctx, result.Fields)
+	builder := newAPLEventFrameBuilder(ctx, result.Fields)
 	return builder.Build(ctx, result, frameOptions)
 }
 
-func newAPLFrameBuilder(ctx context.Context, fields []axiQuery.Field) aplFrameBuilder {
+func newAPLEventFrameBuilder(ctx context.Context, fields []axiQuery.Field) aplFrameBuilder {
 	if fieldsMatchTrace(ctx, fields) {
-		return traceFrameBuilder{}
+		return aplTraceFrameBuilder{}
+	}
+	if fieldsMatchLogs(fields) {
+		return aplLogsFrameBuilder{}
 	}
 
-	return aplTableFrameBuilder{}
+	return aplEventsFrameBuilder{}
+}
+
+type aplTimeSeriesFrameBuilder struct{}
+
+func (aplTimeSeriesFrameBuilder) Build(ctx context.Context, result *axiQuery.Table, opts aplFrameOptions) (*data.Frame, error) {
+	logger := log.DefaultLogger.FromContext(ctx)
+
+	frame, err := aplTableFrameBuilder{}.Build(ctx, result, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	wideFrame, err := aplWideFrameBuilder{}.Build(frame)
+	if err != nil {
+		logger.Error("transformation from long to wide failed", "error", err.Error())
+		return frame, nil
+	}
+
+	applyPreferredVisualization(wideFrame, data.VisTypeGraph)
+	return wideFrame, nil
+}
+
+type aplEventsFrameBuilder struct{}
+
+func (aplEventsFrameBuilder) Build(ctx context.Context, result *axiQuery.Table, opts aplFrameOptions) (*data.Frame, error) {
+	frame, err := aplTableFrameBuilder{}.Build(ctx, result, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	applyPreferredVisualization(frame, data.VisTypeTable)
+	return frame, nil
 }
 
 type aplTableFrameBuilder struct{}
@@ -90,7 +156,7 @@ func (aplTableFrameBuilder) Build(ctx context.Context, result *axiQuery.Table, o
 
 			switch fieldType {
 			case "datetime":
-				fieldValues = []time.Time{}
+				fieldValues = []*time.Time{}
 			case "integer":
 				fieldValues = []*float64{}
 			case "float":
@@ -140,42 +206,76 @@ func (aplTableFrameBuilder) Build(ctx context.Context, result *axiQuery.Table, o
 					}
 				}()
 
-				if col[i] == nil {
-					fields[colIndex].Append(nil)
-					return
-				}
-
 				switch fieldTypes[colIndex] {
 				case "datetime":
-					t, err := time.Parse(time.RFC3339, col[i].(string))
-					if err != nil {
-						logger.Warn("Failed to parse time", "time", col[i])
-						fields[colIndex].Append(time.Time{})
+					if col[i] == nil {
+						fields[colIndex].Append(nil)
 						return
 					}
-					fields[colIndex].Append(t)
+
+					timestamp, ok := col[i].(time.Time)
+					if ok {
+						fields[colIndex].Append(&timestamp)
+						return
+					}
+
+					t, err := time.Parse(time.RFC3339Nano, col[i].(string))
+					if err != nil {
+						logger.Warn("Failed to parse time", "time", col[i])
+						fields[colIndex].Append(nil)
+						return
+					}
+					fields[colIndex].Append(&t)
 				case "integer":
+					if col[i] == nil {
+						fields[colIndex].Append(nil)
+						return
+					}
 					num := col[i].(float64)
 					fields[colIndex].Append(&num)
 				case "float":
+					if col[i] == nil {
+						fields[colIndex].Append(nil)
+						return
+					}
 					num := col[i].(float64)
 					fields[colIndex].Append(&num)
 				case "string", "unknown":
+					if col[i] == nil {
+						fields[colIndex].Append(nil)
+						return
+					}
 					txt, ok := col[i].(string)
 					if !ok {
 						txt = stringifyFrameValue(col[i])
 					}
 					fields[colIndex].Append(&txt)
 				case "bool":
+					if col[i] == nil {
+						fields[colIndex].Append(nil)
+						return
+					}
 					b := col[i].(bool)
 					fields[colIndex].Append(&b)
 				case "timespan":
+					if col[i] == nil {
+						fields[colIndex].Append(nil)
+						return
+					}
 					num := col[i].(string)
 					fields[colIndex].Append(&num)
 				case "array":
+					if col[i] == nil {
+						fields[colIndex].Append(nil)
+						return
+					}
 					txt := stringifyFrameValue(col[i])
 					fields[colIndex].Append(&txt)
 				default:
+					if col[i] == nil {
+						fields[colIndex].Append(nil)
+						return
+					}
 					txt := stringifyFrameValue(col[i])
 					fields[colIndex].Append(&txt)
 				}

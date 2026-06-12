@@ -90,6 +90,18 @@ func applyAPLFrameMetadata(frame *data.Frame, opts aplFrameOptions) {
 	frame.Meta.Notices = append(frame.Meta.Notices, aplQueryNotices(*opts.Status)...)
 }
 
+func applyPreferredVisualization(frame *data.Frame, visualization data.VisType) {
+	if frame == nil {
+		return
+	}
+	if frame.Meta == nil {
+		frame.Meta = &data.FrameMeta{}
+	}
+	if frame.Meta.PreferredVisualization == "" {
+		frame.Meta.PreferredVisualization = visualization
+	}
+}
+
 func aplQueryStats(status axiomapi.APLQueryStatus) []data.QueryStat {
 	return []data.QueryStat{
 		{FieldConfig: data.FieldConfig{DisplayName: "Elapsed time", Unit: "µs"}, Value: float64(status.ElapsedTime)},

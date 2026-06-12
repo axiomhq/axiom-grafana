@@ -33,27 +33,6 @@ func (d *Datasource) schemaLookup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, logger, dsf)
 }
 
-func (d *Datasource) FetchDatasets(w http.ResponseWriter, r *http.Request) {
-	logger := log.DefaultLogger.FromContext(r.Context())
-
-	dsf, err := d.api.DatasetFields(r.Context())
-	if err != nil {
-		logger.Error("error looking up schema", "error", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	datasets := make([]string, 0, len(dsf))
-	for _, dataset := range dsf {
-		if dataset == nil || dataset.DatasetName == "" {
-			continue
-		}
-		datasets = append(datasets, dataset.DatasetName)
-	}
-
-	writeJSON(w, logger, datasets)
-}
-
 func (d *Datasource) FetchMetricsDatasets(w http.ResponseWriter, r *http.Request) {
 	logger := log.DefaultLogger.FromContext(r.Context())
 

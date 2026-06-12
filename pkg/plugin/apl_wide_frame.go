@@ -8,13 +8,9 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 )
 
-type wideFrameBuilder struct{}
+type aplWideFrameBuilder struct{}
 
-func longToWideFrame(frame *data.Frame) (*data.Frame, error) {
-	return wideFrameBuilder{}.Build(frame)
-}
-
-func (wideFrameBuilder) Build(frame *data.Frame) (*data.Frame, error) {
+func (aplWideFrameBuilder) Build(frame *data.Frame) (*data.Frame, error) {
 	wideFrame, err := data.LongToWide(frame, &data.FillMissing{
 		Mode: data.FillModePrevious,
 	})

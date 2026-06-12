@@ -19,10 +19,6 @@ func newMetricsFrameBuilder(metadata axiomapi.MetricsQueryMetadata, refID string
 	}
 }
 
-func buildMetricsFrame(group axiomapi.MetricsQuerySeries, metadata axiomapi.MetricsQueryMetadata, refID string) *data.Frame {
-	return newMetricsFrameBuilder(metadata, refID).Build(group)
-}
-
 func (b metricsFrameBuilder) Build(group axiomapi.MetricsQuerySeries) *data.Frame {
 	frameName := group.Metric
 	if frameName == "" {

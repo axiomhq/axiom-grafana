@@ -11,7 +11,6 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
-	"github.com/grafana/grafana-plugin-sdk-go/data"
 	"github.com/grafana/grafana-plugin-sdk-go/experimental/concurrent"
 )
 
@@ -35,10 +34,11 @@ type Datasource struct {
 }
 
 type queryModel struct {
-	APL    *string `json:"apl"`
-	Kind   *string `json:"kind"`
-	Query  *string `json:"query"`
-	Totals bool    `json:"totals"`
+	APL                 *string `json:"apl"`
+	Kind                *string `json:"kind"`
+	Query               *string `json:"query"`
+	SupportingQueryType *string `json:"supportingQueryType"`
+	Totals              bool    `json:"totals"`
 }
 
 // NewDatasource creates a new datasource instance.
@@ -136,7 +136,9 @@ func (d *Datasource) execQuery(ctx context.Context, query concurrent.Query) (res
 	var queryResponse *backend.DataResponse
 
 	// make request to axiom
-	if kind == "mpl" {
+	if isLogsVolumeQuery(query.DataQuery, &qm) {
+		queryResponse, err = d.queryLogsVolume(ctx, &qm, query.DataQuery, datasourceName(query.PluginContext))
+	} else if kind == "mpl" {
 		queryResponse, err = d.queryMetrics(ctx, &qm, query.DataQuery.RefID, query.DataQuery.TimeRange.From, query.DataQuery.TimeRange.To)
 	} else {
 		queryResponse, err = d.queryEvents(ctx, &qm, query.DataQuery.TimeRange.From, query.DataQuery.TimeRange.To)
@@ -156,8 +158,6 @@ func (d *Datasource) execQuery(ctx context.Context, query concurrent.Query) (res
 // queryEvents executes an APL query against the configured endpoint
 // (edge or legacy apiHost, depending on configuration).
 func (d *Datasource) queryEvents(ctx context.Context, q *queryModel, startTime, endTime time.Time) (*backend.DataResponse, error) {
-	logger := log.DefaultLogger.FromContext(ctx)
-
 	reqBody := axiomapi.APLQueryRequest{
 		APL:       q.Query,
 		StartTime: startTime,
@@ -169,14 +169,6 @@ func (d *Datasource) queryEvents(ctx context.Context, q *queryModel, startTime, 
 		return nil, err
 	}
 
-	var response backend.DataResponse
-
-	if len(result.Tables) == 0 {
-		return nil, fmt.Errorf("query returned no tables")
-	}
-
-	var frame *data.Frame
-	var newFrame *data.Frame
 	frameOptions := aplFrameOptions{
 		FieldMetaByName: fieldMetaByNameForResponse(result),
 		Status:          result.Status,
@@ -184,49 +176,14 @@ func (d *Datasource) queryEvents(ctx context.Context, q *queryModel, startTime, 
 	if q.Query != nil {
 		frameOptions.Query = *q.Query
 	}
-	if len(result.Tables) > 1 {
-		if q.Totals {
-			frame, err = buildAPLFrame(ctx, &result.Tables[1], frameOptions)
-		} else {
-			frame, err = buildAPLFrame(ctx, &result.Tables[0], frameOptions)
-		}
-		if err != nil {
-			return nil, err
-		}
 
-		newFrame, err = wideFrameBuilder{}.Build(frame)
-		if err != nil {
-			logger.Error("transformation from long to wide failed", "error", err.Error())
-		}
-		if newFrame != nil {
-			if newFrame.Meta == nil {
-				newFrame.Meta = &data.FrameMeta{}
-			}
-			if newFrame.Meta.PreferredVisualization == "" {
-				newFrame.Meta.PreferredVisualization = data.VisTypeGraph
-			}
-		}
-	} else {
-		frame, err = buildAPLFrame(ctx, &result.Tables[0], frameOptions)
-		if err != nil {
-			return nil, err
-		}
-		if frame != nil {
-			if frame.Meta == nil {
-				frame.Meta = &data.FrameMeta{}
-			}
-			if frame.Meta.PreferredVisualization == "" {
-				frame.Meta.PreferredVisualization = data.VisTypeLogs
-			}
-		}
+	frame, err := newAPLResponseFrameBuilder(q.Totals).Build(ctx, result, frameOptions)
+	if err != nil {
+		return nil, err
 	}
 
-	if newFrame != nil {
-		response.Frames = append(response.Frames, newFrame)
-	} else {
-		response.Frames = append(response.Frames, frame)
-	}
-
+	var response backend.DataResponse
+	response.Frames = append(response.Frames, frame)
 	return &response, nil
 }
 
