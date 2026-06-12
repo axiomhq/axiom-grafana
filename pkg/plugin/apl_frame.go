@@ -32,12 +32,37 @@ func newAPLResponseFrameBuilder(totals bool) aplResponseFrameBuilder {
 }
 
 func (b aplResponseFrameBuilder) Build(ctx context.Context, result axiomapi.APLQueryResponse, opts aplFrameOptions) (*data.Frame, error) {
+	frames, err := b.BuildFrames(ctx, result, opts)
+	if err != nil {
+		return nil, err
+	}
+	if len(frames) == 0 {
+		return nil, fmt.Errorf("query returned no frames")
+	}
+
+	return frames[0], nil
+}
+
+func (b aplResponseFrameBuilder) BuildFrames(ctx context.Context, result axiomapi.APLQueryResponse, opts aplFrameOptions) ([]*data.Frame, error) {
 	if len(result.Tables) == 0 {
 		return nil, fmt.Errorf("query returned no tables")
 	}
 
 	if b.shouldBuildTimeSeries(result) {
-		return aplTimeSeriesFrameBuilder{}.Build(ctx, &result.Tables[0], opts)
+		frames, err := aplTimeSeriesFrameBuilder{}.BuildFrames(ctx, &result.Tables[0], opts)
+		if err != nil {
+			return nil, err
+		}
+		if len(frames) > 1 && len(result.Tables) > 1 {
+			totalsFrame, err := aplTableFrameBuilder{}.Build(ctx, &result.Tables[1], opts)
+			if err != nil {
+				return nil, err
+			}
+			totalsFrame.Meta = cloneFrameMeta(totalsFrame.Meta)
+			applyPreferredVisualization(totalsFrame, data.VisTypeTable)
+			frames[1] = totalsFrame
+		}
+		return frames, nil
 	}
 
 	table := &result.Tables[0]
@@ -45,7 +70,12 @@ func (b aplResponseFrameBuilder) Build(ctx context.Context, result axiomapi.APLQ
 		table = &result.Tables[1]
 	}
 
-	return newAPLEventFrameBuilder(ctx, table.Fields).Build(ctx, table, opts)
+	frame, err := newAPLEventFrameBuilder(ctx, table.Fields).Build(ctx, table, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return []*data.Frame{frame}, nil
 }
 
 func (b aplResponseFrameBuilder) shouldBuildTimeSeries(result axiomapi.APLQueryResponse) bool {
@@ -76,22 +106,44 @@ func newAPLEventFrameBuilder(ctx context.Context, fields []axiQuery.Field) aplFr
 type aplTimeSeriesFrameBuilder struct{}
 
 func (aplTimeSeriesFrameBuilder) Build(ctx context.Context, result *axiQuery.Table, opts aplFrameOptions) (*data.Frame, error) {
+	frames, err := aplTimeSeriesFrameBuilder{}.BuildFrames(ctx, result, opts)
+	if err != nil {
+		return nil, err
+	}
+	if len(frames) == 0 {
+		return nil, fmt.Errorf("query returned no frames")
+	}
+
+	return frames[0], nil
+}
+
+func (aplTimeSeriesFrameBuilder) BuildFrames(ctx context.Context, result *axiQuery.Table, opts aplFrameOptions) ([]*data.Frame, error) {
 	logger := log.DefaultLogger.FromContext(ctx)
 
-	frame, err := aplTableFrameBuilder{}.Build(ctx, result, opts)
+	tableFrame, err := aplTableFrameBuilder{}.Build(ctx, result, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	frame = prepareAPLTimeSeriesFrame(frame)
-	wideFrame, err := aplWideFrameBuilder{}.Build(frame)
+	graphInput := cloneFrameWithMeta(tableFrame)
+	graphInput = prepareAPLTimeSeriesFrame(graphInput)
+	wideFrame, err := aplWideFrameBuilder{}.Build(graphInput)
 	if err != nil {
-		logger.Error("transformation from long to wide failed", "error", err.Error())
-		return frame, nil
+		if graphInput.TimeSeriesSchema().Type != data.TimeSeriesTypeWide {
+			logger.Error("transformation from long to wide failed", "error", err.Error())
+			applyPreferredVisualization(tableFrame, data.VisTypeTable)
+			return []*data.Frame{tableFrame}, nil
+		}
+		wideFrame = cloneFrameWithMeta(graphInput)
+		ensureTimeSeriesWideFrameMetadata(wideFrame)
 	}
 
+	wideFrame.Meta = cloneFrameMeta(wideFrame.Meta)
 	applyPreferredVisualization(wideFrame, data.VisTypeGraph)
-	return wideFrame, nil
+	tableFrame.Meta = cloneFrameMeta(tableFrame.Meta)
+	applyPreferredVisualization(tableFrame, data.VisTypeTable)
+
+	return []*data.Frame{wideFrame, tableFrame}, nil
 }
 
 func prepareAPLTimeSeriesFrame(frame *data.Frame) *data.Frame {
@@ -118,7 +170,39 @@ func prepareAPLTimeSeriesFrame(frame *data.Frame) *data.Frame {
 
 	timeSeriesFrame := *frame
 	timeSeriesFrame.Fields = fields
+	timeSeriesFrame.Meta = cloneFrameMeta(frame.Meta)
 	return &timeSeriesFrame
+}
+
+func cloneFrameWithMeta(frame *data.Frame) *data.Frame {
+	if frame == nil {
+		return nil
+	}
+
+	clone := *frame
+	clone.Fields = append([]*data.Field(nil), frame.Fields...)
+	clone.Meta = cloneFrameMeta(frame.Meta)
+	return &clone
+}
+
+func cloneFrameMeta(meta *data.FrameMeta) *data.FrameMeta {
+	if meta == nil {
+		return nil
+	}
+
+	clone := *meta
+	clone.Stats = append([]data.QueryStat(nil), meta.Stats...)
+	clone.Notices = append([]data.Notice(nil), meta.Notices...)
+	clone.UniqueRowIDFields = append([]int(nil), meta.UniqueRowIDFields...)
+	return &clone
+}
+
+func ensureTimeSeriesWideFrameMetadata(frame *data.Frame) {
+	if frame.Meta == nil {
+		frame.Meta = &data.FrameMeta{}
+	}
+	frame.Meta.Type = data.FrameTypeTimeSeriesWide
+	frame.Meta.TypeVersion = data.FrameTypeVersion{0, 1}
 }
 
 type aplEventsFrameBuilder struct{}

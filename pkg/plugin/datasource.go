@@ -177,13 +177,13 @@ func (d *Datasource) queryEvents(ctx context.Context, q *queryModel, startTime, 
 		frameOptions.Query = *q.Query
 	}
 
-	frame, err := newAPLResponseFrameBuilder(q.Totals).Build(ctx, result, frameOptions)
+	frames, err := newAPLResponseFrameBuilder(q.Totals).BuildFrames(ctx, result, frameOptions)
 	if err != nil {
 		return nil, err
 	}
 
 	var response backend.DataResponse
-	response.Frames = append(response.Frames, frame)
+	response.Frames = append(response.Frames, frames...)
 	return &response, nil
 }
 

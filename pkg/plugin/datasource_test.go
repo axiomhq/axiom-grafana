@@ -343,6 +343,96 @@ func TestAPLResponseFrameBuilderBuildsTimeSeriesFrame(t *testing.T) {
 	require.Len(t, got.Fields, 3)
 }
 
+func TestAPLResponseFrameBuilderBuildFramesReturnsGraphAndTableForTimeSeries(t *testing.T) {
+	v1 := float64(100)
+	v2 := float64(200)
+	result := axiomapi.APLQueryResponse{
+		Tables: []query.Table{
+			{
+				Fields: []query.Field{
+					{Name: "_time", Type: "datetime"},
+					{Name: "method", Type: "string"},
+					{Name: "count_", Type: "integer"},
+				},
+				Columns: []query.Column{
+					{"2026-06-11T13:45:00Z", "2026-06-11T13:45:00Z"},
+					{"GET", "POST"},
+					{v1, v2},
+				},
+			},
+			{
+				Fields: []query.Field{
+					{Name: "method", Type: "string"},
+					{Name: "count_", Type: "integer"},
+				},
+				Columns: []query.Column{
+					{"GET", "POST"},
+					{v1, v2},
+				},
+			},
+		},
+	}
+
+	frames, err := newAPLResponseFrameBuilder(false).BuildFrames(context.Background(), result, aplFrameOptions{})
+	require.NoError(t, err)
+	require.Len(t, frames, 2)
+
+	require.NotNil(t, frames[0].Meta)
+	require.Equal(t, data.FrameTypeTimeSeriesWide, frames[0].Meta.Type)
+	require.EqualValues(t, data.VisTypeGraph, frames[0].Meta.PreferredVisualization)
+
+	require.NotNil(t, frames[1].Meta)
+	require.EqualValues(t, data.VisTypeTable, frames[1].Meta.PreferredVisualization)
+	require.Empty(t, frames[1].Meta.Type)
+	require.Len(t, frames[1].Fields, 2)
+	require.Equal(t, "method", frames[1].Fields[0].Name)
+	require.Equal(t, "GET", *frames[1].Fields[0].At(0).(*string))
+	require.Equal(t, "POST", *frames[1].Fields[0].At(1).(*string))
+}
+
+func TestAPLResponseFrameBuilderBuildFramesReturnsGraphAndTableForWideTimeSeries(t *testing.T) {
+	v1 := float64(100)
+	v2 := float64(200)
+	result := axiomapi.APLQueryResponse{
+		Tables: []query.Table{
+			{
+				Fields: []query.Field{
+					{Name: "_time", Type: "datetime"},
+					{Name: "count_", Type: "integer"},
+				},
+				Columns: []query.Column{
+					{"2026-06-11T13:45:00Z", "2026-06-11T13:50:00Z"},
+					{v1, v2},
+				},
+			},
+			{
+				Fields: []query.Field{
+					{Name: "count_", Type: "integer"},
+				},
+				Columns: []query.Column{
+					{v1 + v2},
+				},
+			},
+		},
+	}
+
+	frames, err := newAPLResponseFrameBuilder(false).BuildFrames(context.Background(), result, aplFrameOptions{})
+	require.NoError(t, err)
+	require.Len(t, frames, 2)
+
+	require.NotNil(t, frames[0].Meta)
+	require.Equal(t, data.FrameTypeTimeSeriesWide, frames[0].Meta.Type)
+	require.Equal(t, data.FrameTypeVersion{0, 1}, frames[0].Meta.TypeVersion)
+	require.EqualValues(t, data.VisTypeGraph, frames[0].Meta.PreferredVisualization)
+	require.Len(t, frames[0].Fields, 2)
+
+	require.NotNil(t, frames[1].Meta)
+	require.EqualValues(t, data.VisTypeTable, frames[1].Meta.PreferredVisualization)
+	require.Empty(t, frames[1].Meta.Type)
+	require.Len(t, frames[1].Fields, 1)
+	require.Equal(t, "count_", frames[1].Fields[0].Name)
+}
+
 func TestAPLResponseFrameBuilderUsesTimeBeforeSysTimeForTimeSeries(t *testing.T) {
 	v1 := float64(100)
 	result := axiomapi.APLQueryResponse{
