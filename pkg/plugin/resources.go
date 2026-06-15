@@ -12,15 +12,15 @@ import (
 
 func (d *Datasource) newResourceHandler() backend.CallResourceHandler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/schema-lookup", d.schemaLookup)
-	mux.HandleFunc("/metricsdatasets", d.FetchMetricsDatasets)
-	mux.HandleFunc("/datasets/{dataset}/metrics", d.fetchDatasetMetrics)
-	mux.HandleFunc("/datasets/{dataset}/metrics/{metric}/tags", d.fetchMetricTags)
+	mux.HandleFunc("/schema-lookup", d.handleSchemaLookup)
+	mux.HandleFunc("/metricsdatasets", d.HandleMetricsDatasets)
+	mux.HandleFunc("/datasets/{dataset}/metrics", d.handleDatasetMetrics)
+	mux.HandleFunc("/datasets/{dataset}/metrics/{metric}/tags", d.handleMetricTags)
 
 	return httpadapter.New(mux)
 }
 
-func (d *Datasource) schemaLookup(w http.ResponseWriter, r *http.Request) {
+func (d *Datasource) handleSchemaLookup(w http.ResponseWriter, r *http.Request) {
 	logger := log.DefaultLogger.FromContext(r.Context())
 
 	dsf, err := d.api.DatasetFields(r.Context())
@@ -33,7 +33,7 @@ func (d *Datasource) schemaLookup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, logger, dsf)
 }
 
-func (d *Datasource) FetchMetricsDatasets(w http.ResponseWriter, r *http.Request) {
+func (d *Datasource) HandleMetricsDatasets(w http.ResponseWriter, r *http.Request) {
 	logger := log.DefaultLogger.FromContext(r.Context())
 
 	datasets, err := d.api.FetchMetricsDataset(r.Context())
@@ -48,7 +48,7 @@ func (d *Datasource) FetchMetricsDatasets(w http.ResponseWriter, r *http.Request
 	writeJSON(w, logger, datasets)
 }
 
-func (d *Datasource) fetchDatasetMetrics(w http.ResponseWriter, r *http.Request) {
+func (d *Datasource) handleDatasetMetrics(w http.ResponseWriter, r *http.Request) {
 	logger := log.DefaultLogger.FromContext(r.Context())
 	dataset := r.PathValue("dataset")
 	startTime := r.URL.Query().Get("start")
@@ -64,7 +64,7 @@ func (d *Datasource) fetchDatasetMetrics(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, logger, dsf)
 }
 
-func (d *Datasource) fetchMetricTags(w http.ResponseWriter, r *http.Request) {
+func (d *Datasource) handleMetricTags(w http.ResponseWriter, r *http.Request) {
 	logger := log.DefaultLogger.FromContext(r.Context())
 	dataset := r.PathValue("dataset")
 	metric := r.PathValue("metric")
