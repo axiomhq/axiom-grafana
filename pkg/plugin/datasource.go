@@ -138,7 +138,7 @@ func (d *Datasource) execQuery(ctx context.Context, query concurrent.Query) (res
 	if isLogsVolumeQuery(query.DataQuery, &qm) {
 		queryResponse, err = d.queryLogsVolume(ctx, &qm, query.DataQuery, datasourceName(query.PluginContext))
 	} else if kind == "mpl" {
-		queryResponse, err = d.queryMetrics(ctx, &qm, query.DataQuery.RefID, query.DataQuery.TimeRange.From, query.DataQuery.TimeRange.To)
+		queryResponse, err = d.queryMetrics(ctx, &qm, query.DataQuery.RefID, query.DataQuery.TimeRange.From, query.DataQuery.TimeRange.To, query.DataQuery.MaxDataPoints)
 	} else {
 		queryResponse, err = d.queryEvents(ctx, &qm, query.DataQuery, datasourceName(query.PluginContext))
 	}
@@ -206,11 +206,12 @@ func shouldPrependLogsVolumeFrame(q *queryModel, frames []*data.Frame) bool {
 }
 
 // queryMetrics executes an MPL query against the configured edge endpoint
-func (d *Datasource) queryMetrics(ctx context.Context, q *queryModel, refID string, startTime, endTime time.Time) (*backend.DataResponse, error) {
+func (d *Datasource) queryMetrics(ctx context.Context, q *queryModel, refID string, startTime, endTime time.Time, chartWidth int64) (*backend.DataResponse, error) {
 	reqBody := axiomapi.MPLQueryRequest{
-		MPL:       q.Query,
-		StartTime: startTime,
-		EndTime:   endTime,
+		MPL:        q.Query,
+		StartTime:  startTime,
+		EndTime:    endTime,
+		ChartWidth: chartWidth,
 	}
 
 	res, err := d.api.QueryMetrics(ctx, reqBody)

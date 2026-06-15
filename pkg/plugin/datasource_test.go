@@ -201,6 +201,56 @@ func TestQueryLogsVolumeReturnsFullRangeHistogramFrame(t *testing.T) {
 	require.Equal(t, "Axiom", custom["datasourceName"])
 }
 
+func TestMPLQuerySendsChartWidthHeader(t *testing.T) {
+	start := time.Date(2026, 6, 11, 2, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 6, 11, 3, 0, 0, 0, time.UTC)
+	queryText := "fetch cpu"
+	requestCount := 0
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		require.Equal(t, "/v1/query/_mpl", r.URL.Path)
+		require.Equal(t, "734", r.Header.Get("x-axiom-chart-width"))
+
+		var body axiomapi.MPLQueryRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		require.NotNil(t, body.MPL)
+		require.Equal(t, queryText, *body.MPL)
+		require.Equal(t, start, body.StartTime)
+		require.Equal(t, end, body.EndTime)
+		require.Zero(t, body.ChartWidth)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{"metadata":{"unit":"","warnings":[]},"series":[]}`))
+		require.NoError(t, err)
+	}))
+	defer upstream.Close()
+
+	ds := Datasource{
+		api: axiomapi.NewClient(&config.PluginConfig{
+			APIHost: upstream.URL,
+			EdgeURL: upstream.URL,
+		}),
+	}
+
+	resp, err := ds.QueryData(
+		context.Background(),
+		&backend.QueryDataRequest{
+			Queries: []backend.DataQuery{
+				{
+					RefID:         "A",
+					TimeRange:     backend.TimeRange{From: start, To: end},
+					MaxDataPoints: 734,
+					JSON:          json.RawMessage(`{"kind":"mpl","query":"fetch cpu"}`),
+				},
+			},
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, 1, requestCount)
+	require.NoError(t, resp.Responses["A"].Error)
+}
+
 func TestQueryEventsPrependsLogsVolumeFrameForPanelLogQueries(t *testing.T) {
 	start := time.Date(2026, 6, 11, 2, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 6, 11, 3, 0, 0, 0, time.UTC)

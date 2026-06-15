@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/axiomhq/axiom-go/axiom"
@@ -52,9 +53,10 @@ type APLQueryRequest struct {
 
 // MPLQueryRequest represents the MPL query request for edge endpoints.
 type MPLQueryRequest struct {
-	MPL       *string   `json:"mpl"`
-	StartTime time.Time `json:"startTime"`
-	EndTime   time.Time `json:"endTime"`
+	MPL        *string   `json:"mpl"`
+	StartTime  time.Time `json:"startTime"`
+	EndTime    time.Time `json:"endTime"`
+	ChartWidth int64     `json:"-"`
 }
 
 // APLQueryResponse represents the tabular query response from edge endpoints.
@@ -303,6 +305,9 @@ func (api *Client) QueryMetrics(ctx context.Context, reqBody MPLQueryRequest) (M
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/vnd.metrics.v3+json")
+	if reqBody.ChartWidth > 0 {
+		req.Header.Set("x-axiom-chart-width", strconv.FormatInt(reqBody.ChartWidth, 10))
+	}
 
 	var res MetricsQueryResponse
 	resp, err := api.Do(req, &res)
