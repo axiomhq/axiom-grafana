@@ -180,6 +180,83 @@ func TestQueryLogsVolumeReturnsFullRangeHistogramFrame(t *testing.T) {
 	require.Equal(t, "Axiom", custom["datasourceName"])
 }
 
+func TestQueryEventsPrependsLogsVolumeFrameForPanelLogQueries(t *testing.T) {
+	start := time.Date(2026, 6, 11, 2, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 6, 11, 3, 0, 0, 0, time.UTC)
+	requestCount := 0
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/query/_apl", r.URL.Path)
+		require.Equal(t, "tabular", r.URL.Query().Get("format"))
+
+		var body axiomapi.APLQueryRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		require.NotNil(t, body.APL)
+		require.Equal(t, start, body.StartTime)
+		require.Equal(t, end, body.EndTime)
+
+		w.Header().Set("Content-Type", "application/json")
+		requestCount++
+		switch requestCount {
+		case 1:
+			require.Equal(t, "['logs']", *body.APL)
+			_, err := w.Write([]byte(`{
+				"format":"tabular",
+				"tables":[{
+					"fields":[{"name":"_time","type":"datetime"},{"name":"message","type":"string"},{"name":"level","type":"string"}],
+					"columns":[["2026-06-11T02:00:00Z"],["hello"],["info"]]
+				}]
+			}`))
+			require.NoError(t, err)
+		case 2:
+			require.Contains(t, *body.APL, "summarize count_ = count()")
+			require.Contains(t, *body.APL, "bin(_axiom_logs_volume_time, 5m)")
+			_, err := w.Write([]byte(`{
+				"format":"tabular",
+				"tables":[{
+					"fields":[{"name":"_time","type":"datetime"},{"name":"count_","type":"integer"}],
+					"columns":[["2026-06-11T02:00:00Z"],[1]]
+				}]
+			}`))
+			require.NoError(t, err)
+		default:
+			t.Fatalf("unexpected APL request %d", requestCount)
+		}
+	}))
+	defer upstream.Close()
+
+	queryText := "['logs']"
+	ds := Datasource{
+		api: axiomapi.NewClient(&config.PluginConfig{
+			APIHost: upstream.URL,
+			EdgeURL: upstream.URL,
+		}),
+	}
+
+	resp, err := ds.queryEvents(
+		context.Background(),
+		&queryModel{Query: &queryText, IncludeLogsVolumeFrame: true},
+		backend.DataQuery{
+			RefID:         "A",
+			TimeRange:     backend.TimeRange{From: start, To: end},
+			Interval:      5 * time.Minute,
+			MaxDataPoints: 100,
+		},
+		"Axiom",
+	)
+	require.NoError(t, err)
+	require.Equal(t, 2, requestCount)
+	require.Len(t, resp.Frames, 2)
+
+	require.Equal(t, "Logs volume", resp.Frames[0].Name)
+	require.Equal(t, data.FrameTypeTimeSeriesWide, resp.Frames[0].Meta.Type)
+	require.EqualValues(t, data.VisTypeGraph, resp.Frames[0].Meta.PreferredVisualization)
+
+	require.Equal(t, "Logs", resp.Frames[1].Name)
+	require.Equal(t, data.FrameTypeLogLines, resp.Frames[1].Meta.Type)
+	require.EqualValues(t, data.VisTypeLogs, resp.Frames[1].Meta.PreferredVisualization)
+}
+
 func callResource(t *testing.T, handler backend.CallResourceHandler, path string) *backend.CallResourceResponse {
 	t.Helper()
 

@@ -6,6 +6,7 @@ export interface AxiomQuery extends DataQuery {
   apl: string;
   totals: boolean;
   includeTotalsTableFrame?: boolean;
+  includeLogsVolumeFrame?: boolean;
   supportingQueryType?: 'LogsVolume';
   startTime?: string;
   endTime?: string;

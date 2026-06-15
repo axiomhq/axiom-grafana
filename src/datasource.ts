@@ -7,6 +7,8 @@ import { lastValueFrom } from 'rxjs';
 const SUPPLEMENTARY_QUERY_TYPE_LOGS_VOLUME = 'LogsVolume';
 const LOGS_VOLUME_QUERY_TYPE = 'logs-volume';
 
+const PANEL_APPS = new Set<CoreApp | string>([CoreApp.Dashboard, CoreApp.PanelEditor, CoreApp.PanelViewer]);
+
 export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourceOptions> {
   url?: string;
 
@@ -26,12 +28,17 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
 
   query(request: DataQueryRequest<AxiomQuery>) {
     const includeTotalsTableFrame = request.app === CoreApp.Explore;
+    // Dashboard panels default to Time series, which needs a numeric frame.
+    // When an APL query returns logs, the backend uses this flag to prepend a
+    // logs-volume frame while preserving the raw log lines as a secondary frame.
+    const includeLogsVolumeFrame = request.app ? PANEL_APPS.has(request.app) : false;
 
     return super.query({
       ...request,
       targets: request.targets.map((query) => ({
         ...query,
         includeTotalsTableFrame: includeTotalsTableFrame && query.kind !== 'mpl' && !query.totals,
+        includeLogsVolumeFrame: includeLogsVolumeFrame && query.kind !== 'mpl' && !query.totals,
       })),
     });
   }

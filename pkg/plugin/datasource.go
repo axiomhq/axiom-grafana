@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	"github.com/grafana/grafana-plugin-sdk-go/data"
 	"github.com/grafana/grafana-plugin-sdk-go/experimental/concurrent"
 )
 
@@ -41,6 +42,7 @@ type queryModel struct {
 	SupportingQueryType     *string `json:"supportingQueryType"`
 	Totals                  bool    `json:"totals"`
 	IncludeTotalsTableFrame bool    `json:"includeTotalsTableFrame"`
+	IncludeLogsVolumeFrame  bool    `json:"includeLogsVolumeFrame"`
 }
 
 // NewDatasource creates a new datasource instance.
@@ -138,7 +140,7 @@ func (d *Datasource) execQuery(ctx context.Context, query concurrent.Query) (res
 	} else if kind == "mpl" {
 		queryResponse, err = d.queryMetrics(ctx, &qm, query.DataQuery.RefID, query.DataQuery.TimeRange.From, query.DataQuery.TimeRange.To)
 	} else {
-		queryResponse, err = d.queryEvents(ctx, &qm, query.DataQuery.TimeRange.From, query.DataQuery.TimeRange.To)
+		queryResponse, err = d.queryEvents(ctx, &qm, query.DataQuery, datasourceName(query.PluginContext))
 	}
 	if err != nil {
 		logger.Error("failed to query axiom", "error", err)
@@ -152,13 +154,14 @@ func (d *Datasource) execQuery(ctx context.Context, query concurrent.Query) (res
 	return *queryResponse
 }
 
-// queryEvents executes an APL query against the configured endpoint
-// (edge or legacy apiHost, depending on configuration).
-func (d *Datasource) queryEvents(ctx context.Context, q *queryModel, startTime, endTime time.Time) (*backend.DataResponse, error) {
+// queryEvents executes an APL query against the configured endpoint.
+// Dashboard panels ask for includeLogsVolumeFrame so raw log queries still
+// produce a numeric frame for Grafana's default Time series visualization.
+func (d *Datasource) queryEvents(ctx context.Context, q *queryModel, query backend.DataQuery, datasourceName string) (*backend.DataResponse, error) {
 	reqBody := axiomapi.APLQueryRequest{
 		APL:       q.Query,
-		StartTime: startTime,
-		EndTime:   endTime,
+		StartTime: query.TimeRange.From,
+		EndTime:   query.TimeRange.To,
 	}
 
 	result, err := d.api.QueryAPL(ctx, reqBody)
@@ -180,8 +183,25 @@ func (d *Datasource) queryEvents(ctx context.Context, q *queryModel, startTime, 
 	}
 
 	var response backend.DataResponse
+	if shouldPrependLogsVolumeFrame(q, frames) {
+		volumeResponse, err := d.queryLogsVolume(ctx, q, query, datasourceName)
+		if err != nil {
+			return nil, err
+		}
+		response.Frames = append(response.Frames, volumeResponse.Frames...)
+	}
 	response.Frames = append(response.Frames, frames...)
 	return &response, nil
+}
+
+func shouldPrependLogsVolumeFrame(q *queryModel, frames []*data.Frame) bool {
+	if !q.IncludeLogsVolumeFrame || len(frames) != 1 {
+		return false
+	}
+
+	// Branch on the built frame, not the raw query text: APL that starts from a
+	// log dataset can still aggregate into a normal time series or table.
+	return frames[0].Meta != nil && frames[0].Meta.Type == data.FrameTypeLogLines
 }
 
 // queryMetrics executes an MPL query against the configured edge endpoint
