@@ -15,7 +15,10 @@ func (d *Datasource) newResourceHandler() backend.CallResourceHandler {
 	mux.HandleFunc("/schema-lookup", d.handleSchemaLookup)
 	mux.HandleFunc("/metricsdatasets", d.HandleMetricsDatasets)
 	mux.HandleFunc("/datasets/{dataset}/metrics", d.handleDatasetMetrics)
+	mux.HandleFunc("/datasets/{dataset}/tags", d.handleDatasetTags)
+	mux.HandleFunc("/datasets/{dataset}/tags/{tag}/values", d.handleDatasetTagValues)
 	mux.HandleFunc("/datasets/{dataset}/metrics/{metric}/tags", d.handleMetricTags)
+	mux.HandleFunc("/datasets/{dataset}/metrics/{metric}/tags/{tag}/values", d.handleMetricTagValues)
 
 	return httpadapter.New(mux)
 }
@@ -64,6 +67,39 @@ func (d *Datasource) handleDatasetMetrics(w http.ResponseWriter, r *http.Request
 	writeJSON(w, logger, dsf)
 }
 
+func (d *Datasource) handleDatasetTags(w http.ResponseWriter, r *http.Request) {
+	logger := log.DefaultLogger.FromContext(r.Context())
+	dataset := r.PathValue("dataset")
+	startTime := r.URL.Query().Get("start")
+	endTime := r.URL.Query().Get("end")
+
+	dsf, err := d.api.GetMetricTags(r.Context(), dataset, "", startTime, endTime)
+	if err != nil {
+		logger.Error("error looking up schema", "error", err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, logger, dsf)
+}
+
+func (d *Datasource) handleDatasetTagValues(w http.ResponseWriter, r *http.Request) {
+	logger := log.DefaultLogger.FromContext(r.Context())
+	dataset := r.PathValue("dataset")
+	tag := r.PathValue("tag")
+	startTime := r.URL.Query().Get("start")
+	endTime := r.URL.Query().Get("end")
+
+	values, err := d.api.GetMetricTagValues(r.Context(), dataset, "", tag, startTime, endTime)
+	if err != nil {
+		logger.Error("error looking up tag values", "error", err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, logger, values)
+}
+
 func (d *Datasource) handleMetricTags(w http.ResponseWriter, r *http.Request) {
 	logger := log.DefaultLogger.FromContext(r.Context())
 	dataset := r.PathValue("dataset")
@@ -79,6 +115,24 @@ func (d *Datasource) handleMetricTags(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, logger, dsf)
+}
+
+func (d *Datasource) handleMetricTagValues(w http.ResponseWriter, r *http.Request) {
+	logger := log.DefaultLogger.FromContext(r.Context())
+	dataset := r.PathValue("dataset")
+	metric := r.PathValue("metric")
+	tag := r.PathValue("tag")
+	startTime := r.URL.Query().Get("start")
+	endTime := r.URL.Query().Get("end")
+
+	values, err := d.api.GetMetricTagValues(r.Context(), dataset, metric, tag, startTime, endTime)
+	if err != nil {
+		logger.Error("error looking up tag values", "error", err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, logger, values)
 }
 
 func writeJSON(w http.ResponseWriter, logger log.Logger, value any) {

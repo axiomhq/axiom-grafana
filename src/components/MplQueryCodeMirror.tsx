@@ -17,7 +17,7 @@ import {
   mplSystemParams,
 } from '@axiomhq/mpl-codemirror';
 import { ensureMplInit } from '../mpl/ensureMplInit';
-import { DataSource } from '../datasource';
+import type { DataSource } from '../datasource';
 import { MPL_SYSTEM_PARAMS } from '../mpl/constants';
 
 function getMplTokenStyles(theme: GrafanaTheme2) {

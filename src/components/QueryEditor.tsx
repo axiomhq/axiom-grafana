@@ -1,7 +1,7 @@
 import React, { FormEvent } from 'react';
 import { FieldSet, Field, InlineField, InlineFieldRow, InlineSwitch, FilterPill, Stack } from '@grafana/ui';
 import { QueryEditorProps } from '@grafana/data';
-import { DataSource } from '../datasource';
+import type { DataSource } from '../datasource';
 import { AxiomDataSourceOptions, AxiomQuery } from '../types';
 import { MplQueryCodeMirror } from './MplQueryCodeMirror';
 import { APLQueryEdtior } from './AplQueryEditor';

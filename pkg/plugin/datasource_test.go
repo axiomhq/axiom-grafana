@@ -48,8 +48,17 @@ func TestResourceHandlerFetchesEscapedMetricAutocompleteValues(t *testing.T) {
 		case "/v1/query/metrics/info/datasets/team%2Fprod/metrics":
 			_, err := w.Write([]byte(`["http.requests/total"]`))
 			require.NoError(t, err)
+		case "/v1/query/metrics/info/datasets/team%2Fprod/tags":
+			_, err := w.Write([]byte(`["service.name","host.name"]`))
+			require.NoError(t, err)
+		case "/v1/query/metrics/info/datasets/team%2Fprod/tags/service.name/values":
+			_, err := w.Write([]byte(`["api","worker"]`))
+			require.NoError(t, err)
 		case "/v1/query/metrics/info/datasets/team%2Fprod/metrics/http.requests%2Ftotal/tags":
 			_, err := w.Write([]byte(`["service.name"]`))
+			require.NoError(t, err)
+		case "/v1/query/metrics/info/datasets/team%2Fprod/metrics/http.requests%2Ftotal/tags/service.name/values":
+			_, err := w.Write([]byte(`["api"]`))
 			require.NoError(t, err)
 		default:
 			t.Fatalf("unexpected upstream path: %s", r.URL.EscapedPath())
@@ -69,9 +78,21 @@ func TestResourceHandlerFetchesEscapedMetricAutocompleteValues(t *testing.T) {
 	require.Equal(t, http.StatusOK, metricsResp.Status)
 	require.JSONEq(t, `["http.requests/total"]`, string(metricsResp.Body))
 
+	datasetTagsResp := callResource(t, handler, "/datasets/team%2Fprod/tags")
+	require.Equal(t, http.StatusOK, datasetTagsResp.Status)
+	require.JSONEq(t, `["service.name","host.name"]`, string(datasetTagsResp.Body))
+
+	datasetTagValuesResp := callResource(t, handler, "/datasets/team%2Fprod/tags/service.name/values")
+	require.Equal(t, http.StatusOK, datasetTagValuesResp.Status)
+	require.JSONEq(t, `["api","worker"]`, string(datasetTagValuesResp.Body))
+
 	tagsResp := callResource(t, handler, "/datasets/team%2Fprod/metrics/http.requests%2Ftotal/tags")
 	require.Equal(t, http.StatusOK, tagsResp.Status)
 	require.JSONEq(t, `["service.name"]`, string(tagsResp.Body))
+
+	metricTagValuesResp := callResource(t, handler, "/datasets/team%2Fprod/metrics/http.requests%2Ftotal/tags/service.name/values")
+	require.Equal(t, http.StatusOK, metricTagValuesResp.Status)
+	require.JSONEq(t, `["api"]`, string(metricTagValuesResp.Body))
 }
 
 func TestLogsVolumeAPLUsesTimeBeforeSysTime(t *testing.T) {

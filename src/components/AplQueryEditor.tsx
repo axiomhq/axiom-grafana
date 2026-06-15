@@ -1,7 +1,7 @@
 import React from 'react';
 import { CodeEditor } from '@grafana/ui';
 import { DatasetFields, mapDatasetInfosToSchema } from '../schema';
-import { DataSource } from '../datasource';
+import type { DataSource } from '../datasource';
 import { registerKustoLanguage } from '../monaco/registerKustoLanguage';
 
 const workersAssets = require('@axiomhq/axiom-frontend-workers');

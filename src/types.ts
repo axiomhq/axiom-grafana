@@ -5,6 +5,9 @@ export interface AxiomQuery extends DataQuery {
   query: string;
   apl: string;
   totals: boolean;
+  dataset?: string;
+  metric?: string;
+  tag?: string;
   includeTotalsTableFrame?: boolean;
   includeLogsVolumeFrame?: boolean;
   supportingQueryType?: 'LogsVolume';

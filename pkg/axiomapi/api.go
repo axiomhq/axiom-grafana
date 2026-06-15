@@ -238,6 +238,31 @@ func (api *Client) GetMetricTags(ctx context.Context, dataset string, metric str
 	return res, nil
 }
 
+func (api *Client) GetMetricTagValues(ctx context.Context, dataset string, metric string, tag string, startTime, endTime string) ([]string, error) {
+	endpoint := fmt.Sprintf("/v1/query/metrics/info/datasets/%s/tags/%s/values", url.PathEscape(dataset), url.PathEscape(tag))
+	if metric != "" {
+		endpoint = fmt.Sprintf("/v1/query/metrics/info/datasets/%s/metrics/%s/tags/%s/values", url.PathEscape(dataset), url.PathEscape(metric), url.PathEscape(tag))
+	}
+	path, err := url.JoinPath(api.edgeURL, endpoint)
+	if err != nil {
+		return nil, err
+	}
+	path = fmt.Sprintf("%s?start=%s&end=%s", path, startTime, endTime)
+
+	req, err := api.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var res []string
+	_, err = api.Do(req, &res)
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
 func (api *Client) QueryAPL(ctx context.Context, reqBody APLQueryRequest) (APLQueryResponse, error) {
 	endpoint := "/v1/query/_apl"
 	path, err := url.JoinPath(api.edgeURL, endpoint)

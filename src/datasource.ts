@@ -1,7 +1,16 @@
-import { CoreApp, DataFrame, DataQueryRequest, DataQueryResponse, DataSourceInstanceSettings, ScopedVars } from '@grafana/data';
+import {
+  CoreApp,
+  DataQueryRequest,
+  DataQueryResponse,
+  DataSourceInstanceSettings,
+  MetricFindValue,
+  ScopedVars,
+} from '@grafana/data';
 import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
 
 import { AxiomQuery, AxiomDataSourceOptions } from './types';
+import { AxiomVariableSupport } from './variables';
+import { getMetricFindValues, textValuesToMetricFindValues } from './variableValues';
 import { lastValueFrom } from 'rxjs';
 
 const SUPPLEMENTARY_QUERY_TYPE_LOGS_VOLUME = 'LogsVolume';
@@ -15,14 +24,18 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
   constructor(instanceSettings: DataSourceInstanceSettings<AxiomDataSourceOptions>) {
     super(instanceSettings);
     this.url = instanceSettings.url;
+    this.variables = new AxiomVariableSupport(this);
   }
 
   applyTemplateVariables(query: AxiomQuery, scopedVars: ScopedVars) {
     const templateSrv = getTemplateSrv();
+    const queryText = query.query || query.apl || '';
+    const interpolatedQuery = templateSrv.replace(queryText, scopedVars);
 
     return {
       ...query,
-      apl: query.query ? templateSrv.replace(query.query, scopedVars) : '',
+      query: interpolatedQuery,
+      apl: interpolatedQuery,
     };
   }
 
@@ -52,16 +65,28 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
     };
   }
 
-  async metricFindQuery(query: AxiomQuery, options?: any) {
+  async metricFindQuery(query: AxiomQuery, options?: any): Promise<MetricFindValue[]> {
+    const scopedVars = options?.scopedVars ?? {};
+    const interpolatedQuery = this.applyTemplateVariables(query, scopedVars);
+    if (interpolatedQuery.kind === 'mpl') {
+      if (!interpolatedQuery.dataset || !interpolatedQuery.tag) {
+        return [];
+      }
+
+      return textValuesToMetricFindValues(
+        await this.getMetricTagValues(interpolatedQuery.dataset, interpolatedQuery.tag, interpolatedQuery.metric)
+      );
+    }
+
     const request = {
       targets: [
         {
-          ...query,
+          ...interpolatedQuery,
           refId: 'metricFindQuery',
         },
       ],
-      range: options.range,
-      rangeRaw: options.rangeRaw,
+      range: options?.range,
+      rangeRaw: options?.rangeRaw,
     } as DataQueryRequest<AxiomQuery>;
 
     let res: DataQueryResponse | undefined;
@@ -72,13 +97,11 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
       return Promise.reject(err);
     }
 
-    if (res && (!res.data.length || !res.data[0].fields.length)) {
+    if (res && (!res.data.length || !res.data.some((frame) => frame.fields?.length))) {
       return [];
     }
 
-    return res
-      ? (res.data[0] as DataFrame).fields[0].values.map((v) => ({ text: v != null ? v.toString() : null }))
-      : [];
+    return res ? getMetricFindValues(res, interpolatedQuery.kind) : [];
   }
 
   async lookupSchema() {
@@ -144,7 +167,7 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
     return this.getResource(`datasets/${encodeURIComponent(dataset)}/metrics?${params}`);
   }
 
-  getTags(dataset: string, metric: string) {
+  getTags(dataset: string, metric?: string) {
     const timeParams = this.timeRangeParams();
     const params = new URLSearchParams();
     if (timeParams.start) {
@@ -154,8 +177,32 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
       params.set('end', timeParams.end);
     }
 
+    const encodedDataset = encodeURIComponent(dataset);
+    if (!metric) {
+      return this.getResource(`datasets/${encodedDataset}/tags?${params}`);
+    }
+
+    return this.getResource(`datasets/${encodedDataset}/metrics/${encodeURIComponent(metric)}/tags?${params}`);
+  }
+
+  getMetricTagValues(dataset: string, tag: string, metric?: string) {
+    const timeParams = this.timeRangeParams();
+    const params = new URLSearchParams();
+    if (timeParams.start) {
+      params.set('start', timeParams.start);
+    }
+    if (timeParams.end) {
+      params.set('end', timeParams.end);
+    }
+
+    const encodedDataset = encodeURIComponent(dataset);
+    const encodedTag = encodeURIComponent(tag);
+    if (!metric) {
+      return this.getResource(`datasets/${encodedDataset}/tags/${encodedTag}/values?${params}`);
+    }
+
     return this.getResource(
-      `datasets/${encodeURIComponent(dataset)}/metrics/${encodeURIComponent(metric)}/tags?${params}`
+      `datasets/${encodedDataset}/metrics/${encodeURIComponent(metric)}/tags/${encodedTag}/values?${params}`
     );
   }
 }
