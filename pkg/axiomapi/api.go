@@ -64,6 +64,7 @@ type APLQueryResponse struct {
 	Tables        []query.Table                `json:"tables"`
 	DatasetNames  []string                     `json:"datasetNames"`
 	FieldsMetaMap map[string][]APLFieldMetaMap `json:"fieldsMetaMap"`
+	TraceID       string                       `json:"-"`
 }
 
 type APLQueryStatus struct {
@@ -93,6 +94,7 @@ type APLFieldMetaMap struct {
 type MetricsQueryResponse struct {
 	Metadata MetricsQueryMetadata `json:"metadata"`
 	Series   []MetricsQuerySeries `json:"series"`
+	TraceID  string               `json:"-"`
 }
 
 type MetricsQueryMetadata struct {
@@ -278,10 +280,11 @@ func (api *Client) QueryAPL(ctx context.Context, reqBody APLQueryRequest) (APLQu
 	}
 
 	var result APLQueryResponse
-	_, err = api.Do(req, &result)
+	resp, err := api.Do(req, &result)
 	if err != nil {
 		return APLQueryResponse{}, err
 	}
+	result.TraceID = traceIDFromResponse(resp)
 
 	return result, nil
 }
@@ -302,12 +305,20 @@ func (api *Client) QueryMetrics(ctx context.Context, reqBody MPLQueryRequest) (M
 	req.Header.Set("Accept", "application/vnd.metrics.v3+json")
 
 	var res MetricsQueryResponse
-	_, err = api.Do(req, &res)
+	resp, err := api.Do(req, &res)
 	if err != nil {
 		return MetricsQueryResponse{}, err
 	}
+	res.TraceID = traceIDFromResponse(resp)
 
 	return res, nil
+}
+
+func traceIDFromResponse(resp *http.Response) string {
+	if resp == nil {
+		return ""
+	}
+	return resp.Header.Get("X-Axiom-Trace-Id")
 }
 
 func (api *Client) NewRequest(ctx context.Context, method, path string, body any) (*http.Request, error) {

@@ -172,6 +172,7 @@ func (d *Datasource) queryEvents(ctx context.Context, q *queryModel, query backe
 	frameOptions := aplFrameOptions{
 		FieldMetaByName: fieldMetaByNameForResponse(result),
 		Status:          result.Status,
+		TraceID:         result.TraceID,
 	}
 	if q.Query != nil {
 		frameOptions.Query = *q.Query
@@ -221,7 +222,9 @@ func (d *Datasource) queryMetrics(ctx context.Context, q *queryModel, refID stri
 	frameBuilder := newMetricsFrameBuilder(res.Metadata, refID)
 
 	for _, group := range res.Series {
-		response.Frames = append(response.Frames, frameBuilder.Build(group))
+		frame := frameBuilder.Build(group)
+		applyAxiomTraceID(frame, res.TraceID)
+		response.Frames = append(response.Frames, frame)
 	}
 
 	// extract the data from the response

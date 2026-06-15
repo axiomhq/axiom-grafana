@@ -69,7 +69,7 @@ func lookupAPLFieldMeta(f axiQuery.Field, fieldMetaByName map[string]axiomapi.AP
 }
 
 func applyAPLFrameMetadata(frame *data.Frame, opts aplFrameOptions) {
-	if opts.Status == nil && opts.Query == "" {
+	if opts.Status == nil && opts.Query == "" && opts.TraceID == "" {
 		return
 	}
 
@@ -80,14 +80,41 @@ func applyAPLFrameMetadata(frame *data.Frame, opts aplFrameOptions) {
 		frame.Meta.ExecutedQueryString = opts.Query
 	}
 	if opts.Status == nil {
+		applyAxiomTraceID(frame, opts.TraceID)
 		return
 	}
 
 	frame.Meta.Stats = aplQueryStats(*opts.Status)
-	frame.Meta.Custom = map[string]any{
-		"axiomStatus": opts.Status,
-	}
+	setFrameMetaCustom(frame, "axiomStatus", opts.Status)
 	frame.Meta.Notices = append(frame.Meta.Notices, aplQueryNotices(*opts.Status)...)
+	applyAxiomTraceID(frame, opts.TraceID)
+}
+
+func applyAxiomTraceID(frame *data.Frame, traceID string) {
+	if traceID == "" {
+		return
+	}
+	if frame.Meta == nil {
+		frame.Meta = &data.FrameMeta{}
+	}
+	setFrameMetaCustom(frame, "axiomTraceId", traceID)
+	frame.Meta.Notices = append(frame.Meta.Notices, data.Notice{
+		Severity: data.NoticeSeverityInfo,
+		Text:     "Axiom trace ID: " + traceID,
+		Inspect:  data.InspectTypeStats,
+	})
+}
+
+func setFrameMetaCustom(frame *data.Frame, key string, value any) {
+	if frame.Meta == nil {
+		frame.Meta = &data.FrameMeta{}
+	}
+	custom, ok := frame.Meta.Custom.(map[string]any)
+	if !ok || custom == nil {
+		custom = map[string]any{}
+	}
+	custom[key] = value
+	frame.Meta.Custom = custom
 }
 
 func applyPreferredVisualization(frame *data.Frame, visualization data.VisType) {

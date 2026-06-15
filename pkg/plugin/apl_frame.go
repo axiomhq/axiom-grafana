@@ -15,6 +15,7 @@ type aplFrameOptions struct {
 	FieldMetaByName map[string]axiomapi.APLFieldMetaMap
 	Status          *axiomapi.APLQueryStatus
 	Query           string
+	TraceID         string
 }
 
 type aplFrameBuilder interface {

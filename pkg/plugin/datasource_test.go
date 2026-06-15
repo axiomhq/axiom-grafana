@@ -220,6 +220,7 @@ func TestQueryEventsPrependsLogsVolumeFrameForPanelLogQueries(t *testing.T) {
 		requestCount++
 		switch requestCount {
 		case 1:
+			w.Header().Set("X-Axiom-Trace-Id", "main-trace")
 			require.Equal(t, "['logs']", *body.APL)
 			_, err := w.Write([]byte(`{
 				"format":"tabular",
@@ -230,6 +231,7 @@ func TestQueryEventsPrependsLogsVolumeFrameForPanelLogQueries(t *testing.T) {
 			}`))
 			require.NoError(t, err)
 		case 2:
+			w.Header().Set("X-Axiom-Trace-Id", "logs-volume-trace")
 			require.Contains(t, *body.APL, "summarize count_ = count()")
 			require.Contains(t, *body.APL, "bin(_axiom_logs_volume_time, 5m)")
 			_, err := w.Write([]byte(`{
@@ -272,10 +274,16 @@ func TestQueryEventsPrependsLogsVolumeFrameForPanelLogQueries(t *testing.T) {
 	require.Equal(t, "Logs volume", resp.Frames[0].Name)
 	require.Equal(t, data.FrameTypeTimeSeriesWide, resp.Frames[0].Meta.Type)
 	require.EqualValues(t, data.VisTypeGraph, resp.Frames[0].Meta.PreferredVisualization)
+	logsVolumeCustom, ok := resp.Frames[0].Meta.Custom.(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "logs-volume-trace", logsVolumeCustom["axiomTraceId"])
 
 	require.Equal(t, "Logs", resp.Frames[1].Name)
 	require.Equal(t, data.FrameTypeLogLines, resp.Frames[1].Meta.Type)
 	require.EqualValues(t, data.VisTypeLogs, resp.Frames[1].Meta.PreferredVisualization)
+	logsCustom, ok := resp.Frames[1].Meta.Custom.(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "main-trace", logsCustom["axiomTraceId"])
 }
 
 func callResource(t *testing.T, handler backend.CallResourceHandler, path string) *backend.CallResourceResponse {
@@ -984,8 +992,9 @@ func TestBuildFrameAddsAxiomStatusToFrameMetadata(t *testing.T) {
 	}
 
 	got, err := buildAPLFrame(context.Background(), &table, aplFrameOptions{
-		Status: status,
-		Query:  "['aws-lambda-dev'] | count",
+		Status:  status,
+		Query:   "['aws-lambda-dev'] | count",
+		TraceID: "trace-123",
 	})
 	require.NoError(t, err)
 	require.NotNil(t, got.Meta)
@@ -994,15 +1003,19 @@ func TestBuildFrameAddsAxiomStatusToFrameMetadata(t *testing.T) {
 	require.Equal(t, "Elapsed time", got.Meta.Stats[0].DisplayName)
 	require.Equal(t, "µs", got.Meta.Stats[0].Unit)
 	require.Equal(t, float64(467358), got.Meta.Stats[0].Value)
-	require.Len(t, got.Meta.Notices, 2)
+	require.Len(t, got.Meta.Notices, 3)
 	require.Equal(t, data.NoticeSeverityWarning, got.Meta.Notices[0].Severity)
 	require.Equal(t, "Axiom returned a partial response", got.Meta.Notices[0].Text)
 	require.Equal(t, data.NoticeSeverityWarning, got.Meta.Notices[1].Severity)
 	require.Equal(t, "apl_warning: something happened", got.Meta.Notices[1].Text)
+	require.Equal(t, data.NoticeSeverityInfo, got.Meta.Notices[2].Severity)
+	require.Equal(t, "Axiom trace ID: trace-123", got.Meta.Notices[2].Text)
+	require.Equal(t, data.InspectTypeStats, got.Meta.Notices[2].Inspect)
 
 	custom, ok := got.Meta.Custom.(map[string]any)
 	require.True(t, ok)
 	require.Same(t, status, custom["axiomStatus"])
+	require.Equal(t, "trace-123", custom["axiomTraceId"])
 }
 
 func TestFieldsMatchTrace(t *testing.T) {

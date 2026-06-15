@@ -42,6 +42,7 @@ func (d *Datasource) queryLogsVolume(ctx context.Context, q *queryModel, query b
 	if err != nil {
 		return nil, err
 	}
+	applyAxiomTraceID(frame, result.TraceID)
 
 	var response backend.DataResponse
 	response.Frames = append(response.Frames, frame)
