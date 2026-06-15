@@ -3,38 +3,8 @@ package plugin
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 )
-
-type urlInput struct {
-	EdgeURL string
-	Edge    string
-	APIHost string
-}
-
-func resolveBaseUrl(urls urlInput) (string, error) {
-	// Priority 1: edgeURL takes precedence
-	if urls.EdgeURL != "" {
-		edgeURL := strings.TrimSuffix(urls.EdgeURL, "/")
-
-		// edgeURL has a custom path, use as-is
-		return edgeURL, nil
-	}
-
-	// Priority 2: edge domain
-	if urls.Edge != "" {
-		edge := strings.TrimSuffix(urls.Edge, "/")
-		return fmt.Sprintf("https://%s", edge), nil
-	}
-
-	// Default: use apiHost with legacy query path
-	if urls.APIHost != "" {
-		return strings.TrimSuffix(urls.APIHost, "/"), nil
-	}
-
-	return "https://api.axiom.co", nil
-}
 
 func stringPtr(value string) *string {
 	return &value
@@ -175,11 +145,4 @@ func inferUnknownFieldType(fieldName string, column []any) string {
 	}
 
 	return "string"
-}
-
-func checkString(i interface{}) string {
-	if str, ok := i.(string); ok {
-		return str
-	}
-	return ""
 }

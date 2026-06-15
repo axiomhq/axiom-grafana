@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/axiomhq/axiom-grafana/pkg/axiomapi"
+	"github.com/axiomhq/axiom-grafana/pkg/config"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
@@ -45,17 +46,12 @@ type queryModel struct {
 // NewDatasource creates a new datasource instance.
 func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
 	logger := log.DefaultLogger.FromContext(ctx)
-	config, err := parseConfig(ctx, settings)
+	config, err := config.ParseConfig(ctx, settings)
 	if err != nil {
 		logger.Error("Failed to parse config", "error", err.Error())
 		return nil, err
 	}
-	api := axiomapi.NewClient(axiomapi.Config{
-		AccessToken: config.AccessToken,
-		APIURL:      config.APIHost,
-		EdgeURL:     config.EdgeURL,
-		UserAgent:   fmt.Sprintf("axiom-grafana/v%s", Version),
-	})
+	api := axiomapi.NewClient(config)
 
 	ds := &Datasource{
 		api: api,

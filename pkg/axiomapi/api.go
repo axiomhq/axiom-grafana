@@ -13,15 +13,10 @@ import (
 
 	"github.com/axiomhq/axiom-go/axiom"
 	"github.com/axiomhq/axiom-go/axiom/query"
+	"github.com/axiomhq/axiom-grafana/pkg/config"
+	"github.com/axiomhq/axiom-grafana/pkg/version"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
-
-type Config struct {
-	AccessToken string
-	APIURL      string
-	EdgeURL     string
-	UserAgent   string
-}
 
 type Client struct {
 	apiURL    string
@@ -113,19 +108,19 @@ type MetricsQuerySeries struct {
 	Metric     string
 }
 
-func NewClient(config Config) *Client {
+func NewClient(c *config.PluginConfig) *Client {
 	client := http.Client{
 		Transport: authTransport{
 			base:  http.DefaultTransport,
-			token: config.AccessToken,
+			token: c.AccessToken,
 		},
 		Timeout: 5 * time.Minute,
 	}
 
 	return &Client{
-		apiURL:    config.APIURL,
-		edgeURL:   config.EdgeURL,
-		userAgent: config.UserAgent,
+		apiURL:    c.APIHost,
+		edgeURL:   c.EdgeURL,
+		userAgent: fmt.Sprintf("axiom-grafana/v%s", version.Version),
 		client:    client,
 	}
 }
