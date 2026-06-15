@@ -1261,7 +1261,7 @@ func TestAPLWideFrameBuilderFillsMissingWithPreviousValue(t *testing.T) {
 	require.Equal(t, float64(100), *filledValue)
 }
 
-func TestMetricsFrameBuilderSetsDisplayNameFromLabels(t *testing.T) {
+func TestMetricsFrameBuilderUsesTagValuesForSeriesName(t *testing.T) {
 	v1 := float64(0.1)
 	v2 := float64(0.2)
 
@@ -1284,12 +1284,37 @@ func TestMetricsFrameBuilderSetsDisplayNameFromLabels(t *testing.T) {
 	require.NotNil(t, frame.Meta)
 	require.Equal(t, data.FrameTypeTimeSeriesMulti, frame.Meta.Type)
 	require.Equal(t, data.FrameTypeVersion{0, 1}, frame.Meta.TypeVersion)
+	require.Equal(t, "602401143452.dkr.ecr.eu-west-1.amazonaws.com/eks/kube-proxy | api | api-7d9", frame.Fields[1].Name)
 	require.NotNil(t, frame.Fields[0].Config)
 	require.Equal(t, float64(60000), frame.Fields[0].Config.Interval)
 	require.NotNil(t, frame.Fields[1].Config)
 	require.Equal(t, "", frame.Fields[1].Config.DisplayNameFromDS)
 	require.Equal(t, "api", frame.Fields[1].Labels["container.name"])
 	require.Equal(t, "{cpu}", frame.Fields[1].Config.Unit)
+}
+
+func TestMetricsFrameBuilderUsesExplicitLabelTagForSeriesName(t *testing.T) {
+	v1 := float64(0.1)
+
+	frame := newMetricsFrameBuilder(axiomapi.MetricsQueryMetadata{Unit: "short"}, "A").Build(
+		axiomapi.MetricsQuerySeries{
+			Resolution: 60,
+			Start:      1781186400,
+			Metric:     "k8s.pod.cpu.usage",
+			Tags: map[string]string{
+				"__label":  "api-7d9",
+				"pod.name": "api-7d9",
+			},
+			Data: []*float64{&v1},
+		},
+	)
+
+	require.Len(t, frame.Fields, 2)
+	require.Equal(t, "api-7d9", frame.Fields[1].Name)
+	require.NotNil(t, frame.Fields[1].Config)
+	require.Equal(t, "", frame.Fields[1].Config.DisplayNameFromDS)
+	require.Equal(t, "api-7d9", frame.Fields[1].Labels["__label"])
+	require.Equal(t, "api-7d9", frame.Fields[1].Labels["pod.name"])
 }
 
 func TestMetricsFrameBuilderSetsDisplayNameFromRefIDWhenTagsAreEmpty(t *testing.T) {
@@ -1305,6 +1330,7 @@ func TestMetricsFrameBuilderSetsDisplayNameFromRefIDWhenTagsAreEmpty(t *testing.
 	)
 
 	require.Len(t, frame.Fields, 2)
+	require.Equal(t, "k8s.pod.cpu.usage", frame.Fields[1].Name)
 	require.NotNil(t, frame.Fields[1].Config)
 	require.Empty(t, frame.Fields[1].Labels)
 	require.Equal(t, "A", frame.Fields[1].Config.DisplayNameFromDS)

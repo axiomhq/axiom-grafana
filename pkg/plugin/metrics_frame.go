@@ -1,11 +1,15 @@
 package plugin
 
 import (
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/axiomhq/axiom-grafana/pkg/axiomapi"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 )
+
+const metricsDisplayLabelTag = "__label"
 
 type metricsFrameBuilder struct {
 	metadata axiomapi.MetricsQueryMetadata
@@ -30,6 +34,8 @@ func (b metricsFrameBuilder) Build(group axiomapi.MetricsQuerySeries) *data.Fram
 		labels[key] = value
 	}
 
+	fieldName := metricsSeriesFieldName(frameName, group.Tags)
+
 	frame := data.NewFrame(frameName)
 	frame.RefID = b.refID
 	frame.Meta = &data.FrameMeta{
@@ -41,7 +47,7 @@ func (b metricsFrameBuilder) Build(group axiomapi.MetricsQuerySeries) *data.Fram
 	timeField := data.NewField("Time", nil, []time.Time{})
 	applyMetricsTimeFieldMetadata(timeField, group)
 	frame.Fields = append(frame.Fields, timeField)
-	valueField := data.NewField(frameName, labels, []*float64{})
+	valueField := data.NewField(fieldName, labels, []*float64{})
 	applyMetricsDisplayName(valueField, b.refID, len(labels) > 0)
 	applyMetricsFieldMetadata(valueField, b.metadata)
 	frame.Fields = append(frame.Fields, valueField)
@@ -54,6 +60,34 @@ func (b metricsFrameBuilder) Build(group axiomapi.MetricsQuerySeries) *data.Fram
 	}
 
 	return frame
+}
+
+func metricsSeriesFieldName(metric string, tags map[string]string) string {
+	if label, ok := tags[metricsDisplayLabelTag]; ok {
+		// MPL users can add `extend __label = ...` to choose the leading
+		// series name while keeping all labels available for Grafana's normal
+		// `{tag=value}` suffix and filtering behavior.
+		return label
+	}
+
+	if len(tags) == 0 {
+		return metric
+	}
+
+	// Without an explicit label, use the tag values as the leading series name
+	// so legends are scannable before Grafana appends the normal tag set.
+	keys := make([]string, 0, len(tags))
+	for key := range tags {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	values := make([]string, 0, len(keys))
+	for _, key := range keys {
+		values = append(values, tags[key])
+	}
+
+	return strings.Join(values, " | ")
 }
 
 func applyMetricsDisplayName(field *data.Field, refID string, hasLabels bool) {
