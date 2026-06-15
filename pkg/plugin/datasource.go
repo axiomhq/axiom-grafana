@@ -36,6 +36,7 @@ type Datasource struct {
 }
 
 type queryModel struct {
+	Version                 *string `json:"version"`
 	APL                     *string `json:"apl"`
 	Kind                    *string `json:"kind"`
 	Query                   *string `json:"query"`

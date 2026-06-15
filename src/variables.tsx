@@ -4,6 +4,7 @@ import { from, map, of } from 'rxjs';
 import { VariableQueryEditor } from './components/VariableQueryEditor';
 import type { DataSource } from './datasource';
 import { AxiomDataSourceOptions, AxiomQuery, DEFAULT_QUERY } from './types';
+import { migrateAxiomQuery } from './queryMigration';
 import { getMetricFindValues, metricFindValuesToDataQueryResponse, textValuesToMetricFindValues } from './variableValues';
 
 export class AxiomVariableSupport extends CustomVariableSupport<
@@ -23,7 +24,7 @@ export class AxiomVariableSupport extends CustomVariableSupport<
   }
 
   query(request: DataQueryRequest<AxiomQuery>) {
-    const query = request.targets[0];
+    const query = request.targets[0] ? migrateAxiomQuery(request.targets[0]) : undefined;
     if (query?.kind === 'mpl') {
       if (!query.dataset || !query.tag) {
         return of(metricFindValuesToDataQueryResponse([]));
@@ -35,7 +36,10 @@ export class AxiomVariableSupport extends CustomVariableSupport<
     }
 
     return this.datasource
-      .query(request)
+      .query({
+        ...request,
+        targets: request.targets.map((target) => migrateAxiomQuery(target)),
+      })
       .pipe(map((res) => metricFindValuesToDataQueryResponse(getMetricFindValues(res, query?.kind))));
   }
 }

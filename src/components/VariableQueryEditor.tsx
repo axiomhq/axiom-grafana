@@ -6,17 +6,23 @@ import { APLQueryEdtior } from './AplQueryEditor';
 import type { DataSource } from '../datasource';
 import { buildMplVariableQuery } from '../mplVariableQuery';
 import { AxiomDataSourceOptions, AxiomQuery, DEFAULT_QUERY } from '../types';
+import { migrateAxiomQuery, shouldMigrateAxiomQuery } from '../queryMigration';
 
 type Props = QueryEditorProps<DataSource, AxiomQuery, AxiomDataSourceOptions>;
 
 export function VariableQueryEditor({ query, onChange, onRunQuery, datasource }: Props) {
-  const variableQuery = useMemo(() => ({ ...DEFAULT_QUERY, ...query } as AxiomQuery), [query]);
-  const queryText = variableQuery.query || variableQuery.apl || '';
-  const aplText = variableQuery.kind === 'mpl' ? variableQuery.apl || '' : queryText;
+  const variableQuery = useMemo(() => ({ ...DEFAULT_QUERY, ...migrateAxiomQuery(query) } as AxiomQuery), [query]);
+  const queryText = variableQuery.query || '';
   const [metrics, setMetrics] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [isMetricsLoading, setIsMetricsLoading] = useState(false);
   const [isTagsLoading, setIsTagsLoading] = useState(false);
+
+  useEffect(() => {
+    if (shouldMigrateAxiomQuery(query)) {
+      onChange({ ...DEFAULT_QUERY, ...migrateAxiomQuery(query) } as AxiomQuery);
+    }
+  }, [query, onChange]);
 
   const loadMetrics = useCallback(async () => {
     if (!variableQuery.dataset) {
@@ -73,7 +79,6 @@ export function VariableQueryEditor({ query, onChange, onRunQuery, datasource }:
     onChange({
       ...next,
       query: buildMplVariableQuery(next),
-      apl: variableQuery.kind === 'apl' ? queryText : next.apl || '',
     });
   };
 
@@ -82,8 +87,8 @@ export function VariableQueryEditor({ query, onChange, onRunQuery, datasource }:
       <Stack>
         <FilterPill
           label="APL"
-          onClick={() => updateQuery({ kind: 'apl', query: aplText, apl: aplText })}
-          selected={variableQuery.kind === 'apl' || !variableQuery.kind}
+          onClick={() => updateQuery({ kind: 'apl', query: variableQuery.kind === 'apl' ? queryText : '' })}
+          selected={variableQuery.kind === 'apl'}
         />
         <FilterPill
           label="MPL"
@@ -149,8 +154,8 @@ export function VariableQueryEditor({ query, onChange, onRunQuery, datasource }:
         </FieldSet>
       ) : (
         <APLQueryEdtior
-          value={aplText}
-          onChange={(apl) => updateQuery({ kind: 'apl', query: apl, apl })}
+          value={queryText}
+          onChange={(apl) => updateQuery({ kind: 'apl', query: apl })}
           datasource={datasource}
           onRunQuery={onRunQuery}
         />

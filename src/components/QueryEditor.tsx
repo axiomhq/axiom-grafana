@@ -1,28 +1,34 @@
-import React, { FormEvent } from 'react';
+import React, { FormEvent, useEffect } from 'react';
 import { FieldSet, Field, InlineField, InlineFieldRow, InlineSwitch, FilterPill, Stack } from '@grafana/ui';
 import { QueryEditorProps } from '@grafana/data';
 import type { DataSource } from '../datasource';
 import { AxiomDataSourceOptions, AxiomQuery } from '../types';
+import { migrateAxiomQuery, shouldMigrateAxiomQuery } from '../queryMigration';
 import { MplQueryCodeMirror } from './MplQueryCodeMirror';
 import { APLQueryEdtior } from './AplQueryEditor';
 
 type Props = QueryEditorProps<DataSource, AxiomQuery, AxiomDataSourceOptions>;
 
 export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) {
-  // const [queryStr, setQueryStr] = React.useState(!query.query ? query.apl : query.query);
-  // if query.query is still empty, fallback to the deprecated .apl value
-  const queryText = !query.query ? query.apl : query.query;
+  const migratedQuery = migrateAxiomQuery(query);
+  const queryText = migratedQuery.query;
+
+  useEffect(() => {
+    if (shouldMigrateAxiomQuery(query)) {
+      onChange(migrateAxiomQuery(query));
+    }
+  }, [query, onChange]);
 
   const onTotalsChange = (e: FormEvent<HTMLInputElement>) => {
     onChange({
-      ...query,
+      ...migratedQuery,
       totals: e.currentTarget.checked,
     });
   };
 
   const runMplQuery = (mpl: string) => {
     onChange({
-      ...query,
+      ...migratedQuery,
       kind: 'mpl',
       query: mpl,
     });
@@ -34,27 +40,31 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
       <Stack>
         <FilterPill
           label="APL"
-          onClick={() => onChange({ ...query, kind: 'apl' })}
-          selected={query.kind === 'apl' || !query.kind}
+          onClick={() => onChange({ ...migratedQuery, kind: 'apl' })}
+          selected={migratedQuery.kind === 'apl'}
         />
-        <FilterPill label="MPL" onClick={() => onChange({ ...query, kind: 'mpl' })} selected={query.kind === 'mpl'} />
+        <FilterPill
+          label="MPL"
+          onClick={() => onChange({ ...migratedQuery, kind: 'mpl' })}
+          selected={migratedQuery.kind === 'mpl'}
+        />
       </Stack>
       <FieldSet>
         <Field>
-          {query.kind === 'mpl' ? (
+          {migratedQuery.kind === 'mpl' ? (
             <MplQueryCodeMirror
               value={queryText}
               onBlur={runMplQuery}
               onRunQuery={runMplQuery}
               onChange={(mpl) => {
-                onChange({ ...query, query: mpl });
+                onChange({ ...migratedQuery, query: mpl });
               }}
               datasource={datasource}
             />
           ) : (
             <APLQueryEdtior
               onChange={(apl) => {
-                onChange({ ...query, query: apl });
+                onChange({ ...migratedQuery, query: apl });
               }}
               value={queryText}
               datasource={datasource}
@@ -62,14 +72,14 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
             />
           )}
         </Field>
-        {query.kind !== 'mpl' && (
+        {migratedQuery.kind !== 'mpl' && (
           <InlineFieldRow>
             <InlineField label="Query type" grow>
               <InlineSwitch
                 label="Return Totals Table"
                 showLabel={true}
-                defaultChecked={query.totals}
-                value={query.totals}
+                defaultChecked={migratedQuery.totals}
+                value={migratedQuery.totals}
                 onChange={onTotalsChange}
               />
             </InlineField>

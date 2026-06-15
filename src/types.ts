@@ -1,9 +1,15 @@
 import { DataQuery, DataSourceJsonData } from '@grafana/schema';
 
+export const QUERY_MODEL_VERSION = '2.0';
+
+export type QueryModelVersion = typeof QUERY_MODEL_VERSION;
+export type AxiomQueryKind = 'apl' | 'mpl';
+
 export interface AxiomQuery extends DataQuery {
-  kind: 'apl' | 'mpl' | null | undefined
+  version?: QueryModelVersion;
+  kind?: AxiomQueryKind | null;
   query: string;
-  apl: string;
+  apl?: string;
   totals: boolean;
   dataset?: string;
   metric?: string;
@@ -16,9 +22,9 @@ export interface AxiomQuery extends DataQuery {
 }
 
 export const DEFAULT_QUERY: Partial<AxiomQuery> = {
+  version: QUERY_MODEL_VERSION,
   kind: 'apl',
   query: '',
-  apl: '', // deprecated: should use query instead
   totals: false,
 };
 

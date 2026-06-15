@@ -9,6 +9,7 @@ import {
 import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
 
 import { AxiomQuery, AxiomDataSourceOptions } from './types';
+import { migrateAxiomQuery } from './queryMigration';
 import { AxiomVariableSupport } from './variables';
 import { getMetricFindValues, textValuesToMetricFindValues } from './variableValues';
 import { lastValueFrom } from 'rxjs';
@@ -29,13 +30,13 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
 
   applyTemplateVariables(query: AxiomQuery, scopedVars: ScopedVars) {
     const templateSrv = getTemplateSrv();
-    const queryText = query.query || query.apl || '';
+    const migratedQuery = migrateAxiomQuery(query);
+    const queryText = migratedQuery.query;
     const interpolatedQuery = templateSrv.replace(queryText, scopedVars);
 
     return {
-      ...query,
+      ...migratedQuery,
       query: interpolatedQuery,
-      apl: interpolatedQuery,
     };
   }
 
@@ -48,11 +49,15 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
 
     return super.query({
       ...request,
-      targets: request.targets.map((query) => ({
-        ...query,
-        includeTotalsTableFrame: includeTotalsTableFrame && query.kind !== 'mpl' && !query.totals,
-        includeLogsVolumeFrame: includeLogsVolumeFrame && query.kind !== 'mpl' && !query.totals,
-      })),
+      targets: request.targets.map((query) => {
+        const migratedQuery = migrateAxiomQuery(query);
+
+        return {
+          ...migratedQuery,
+          includeTotalsTableFrame: includeTotalsTableFrame && migratedQuery.kind !== 'mpl' && !migratedQuery.totals,
+          includeLogsVolumeFrame: includeLogsVolumeFrame && migratedQuery.kind !== 'mpl' && !migratedQuery.totals,
+        };
+      }),
     });
   }
 
@@ -67,7 +72,7 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
 
   async metricFindQuery(query: AxiomQuery, options?: any): Promise<MetricFindValue[]> {
     const scopedVars = options?.scopedVars ?? {};
-    const interpolatedQuery = this.applyTemplateVariables(query, scopedVars);
+    const interpolatedQuery = this.applyTemplateVariables(migrateAxiomQuery(query), scopedVars);
     if (interpolatedQuery.kind === 'mpl') {
       if (!interpolatedQuery.dataset || !interpolatedQuery.tag) {
         return [];
