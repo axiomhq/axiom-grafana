@@ -105,7 +105,7 @@
       },
       "targets": [
         {
-          "apl": "['hn']\n| summarize count() by bin_auto(_time)",
+          "query": "['hn']\n| summarize count() by bin_auto(_time)",
           "datasource": {
             "type": "axiomhq-axiom-datasource",
             "uid": "P59D466820D86172A"
