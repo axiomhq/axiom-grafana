@@ -1312,7 +1312,7 @@ func TestMetricsFrameBuilderUsesExplicitLabelTagForSeriesName(t *testing.T) {
 	require.Len(t, frame.Fields, 2)
 	require.Equal(t, "api-7d9", frame.Fields[1].Name)
 	require.NotNil(t, frame.Fields[1].Config)
-	require.Equal(t, "", frame.Fields[1].Config.DisplayNameFromDS)
+	require.Equal(t, "api-7d9", frame.Fields[1].Config.DisplayNameFromDS)
 	require.Equal(t, "api-7d9", frame.Fields[1].Labels["__label"])
 	require.Equal(t, "api-7d9", frame.Fields[1].Labels["pod.name"])
 }

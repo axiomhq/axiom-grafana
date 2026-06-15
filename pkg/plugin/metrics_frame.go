@@ -48,7 +48,7 @@ func (b metricsFrameBuilder) Build(group axiomapi.MetricsQuerySeries) *data.Fram
 	applyMetricsTimeFieldMetadata(timeField, group)
 	frame.Fields = append(frame.Fields, timeField)
 	valueField := data.NewField(fieldName, labels, []*float64{})
-	applyMetricsDisplayName(valueField, b.refID, len(labels) > 0)
+	applyMetricsDisplayName(valueField, b.refID, group.Tags)
 	applyMetricsFieldMetadata(valueField, b.metadata)
 	frame.Fields = append(frame.Fields, valueField)
 
@@ -64,9 +64,10 @@ func (b metricsFrameBuilder) Build(group axiomapi.MetricsQuerySeries) *data.Fram
 
 func metricsSeriesFieldName(metric string, tags map[string]string) string {
 	if label, ok := tags[metricsDisplayLabelTag]; ok {
-		// MPL users can add `extend __label = ...` to choose the leading
-		// series name while keeping all labels available for Grafana's normal
-		// `{tag=value}` suffix and filtering behavior.
+		// MPL users can add `extend __label = ...` to choose the series name.
+		// applyMetricsDisplayName also uses this value as Grafana's explicit
+		// legend text, hiding the normal `{tag=value}` suffix while keeping the
+		// labels available on the field.
 		return label
 	}
 
@@ -90,8 +91,19 @@ func metricsSeriesFieldName(metric string, tags map[string]string) string {
 	return strings.Join(values, " | ")
 }
 
-func applyMetricsDisplayName(field *data.Field, refID string, hasLabels bool) {
-	if hasLabels || refID == "" {
+func applyMetricsDisplayName(field *data.Field, refID string, tags map[string]string) {
+	if label, ok := tags[metricsDisplayLabelTag]; ok {
+		// A datasource-provided display name suppresses Grafana's automatic
+		// label suffix, so `__label` produces a clean legend while preserving
+		// the full tag set on the series for filtering and inspection.
+		if field.Config == nil {
+			field.Config = &data.FieldConfig{}
+		}
+		field.Config.DisplayNameFromDS = label
+		return
+	}
+
+	if len(tags) > 0 || refID == "" {
 		return
 	}
 
