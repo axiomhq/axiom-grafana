@@ -83,9 +83,10 @@ interface Props {
   onBlur?: (value: string) => void;
   onRunQuery?: (value: string) => void;
   datasource: DataSource;
+  autoFocus?: boolean;
 }
 
-export function MplQueryCodeMirror({ value, onChange, onBlur, onRunQuery, datasource }: Props) {
+export function MplQueryCodeMirror({ value, onChange, onBlur, onRunQuery, datasource, autoFocus = false }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
@@ -93,6 +94,7 @@ export function MplQueryCodeMirror({ value, onChange, onBlur, onRunQuery, dataso
   const onRunQueryRef = useRef(onRunQuery);
   const valueRef = useRef(value);
   const datasourceRef = useRef(datasource);
+  const hasAutoFocusedRef = useRef(false);
   const theme = useTheme2();
   const tokenStyles = getMplTokenStyles(theme);
 
@@ -104,72 +106,81 @@ export function MplQueryCodeMirror({ value, onChange, onBlur, onRunQuery, dataso
 
   useEffect(() => {
     if (!containerRef.current) {
-
       return;
     }
 
     let view: EditorView | null = null;
     let cancelled = false;
 
-    ensureMplInit().then(() => {
+    ensureMplInit()
+      .then(() => {
+        if (cancelled || !containerRef.current) {
+          return;
+        }
+        const completionExt = createMplCompletion({
+          datasets: () => datasourceRef.current.getMetricsDatasets(),
+          metrics: (dataset: string) => datasourceRef.current.getMetrics(dataset),
+          tags: (dataset: string, metric: string) => datasourceRef.current.getTags(dataset, metric),
+        });
 
-      if (cancelled || !containerRef.current) {
-        return;
-      }
-      const completionExt = createMplCompletion({
-        datasets: () => datasourceRef.current.getMetricsDatasets(),
-        metrics: (dataset: string) => datasourceRef.current.getMetrics(dataset),
-        tags: (dataset: string, metric: string) => datasourceRef.current.getTags(dataset, metric),
-      });
-
-      const extensions = [
-        basicSetup,
-        Prec.highest(
-          keymap.of([
-            { key: 'Tab', run: acceptCompletion },
-            indentWithTab,
-            {
-              key: 'Mod-Enter',
-              run: (view) => {
-                onRunQueryRef.current?.(view.state.doc.toString());
-                return true;
+        const extensions = [
+          basicSetup,
+          Prec.highest(
+            keymap.of([
+              { key: 'Tab', run: acceptCompletion },
+              indentWithTab,
+              {
+                key: 'Mod-Enter',
+                run: (view) => {
+                  onRunQueryRef.current?.(view.state.doc.toString());
+                  return true;
+                },
               },
+            ])
+          ),
+          EditorView.lineWrapping,
+          mplSystemParams.of(MPL_SYSTEM_PARAMS),
+          mplHighlighter,
+          completionExt,
+          mplLinter,
+          mplSignatureHelp,
+          mplHover,
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged) {
+              onChangeRef.current(update.state.doc.toString());
+            }
+          }),
+          EditorView.domEventHandlers({
+            blur: (_, view) => {
+              onBlurRef.current?.(view.state.doc.toString());
+              return false;
             },
-          ])
-        ),
-        EditorView.lineWrapping,
-        mplSystemParams.of(MPL_SYSTEM_PARAMS),
-        mplHighlighter,
-        completionExt,
-        mplLinter,
-        mplSignatureHelp,
-        mplHover,
-        EditorView.updateListener.of((update) => {
-          if (update.docChanged) {
-            onChangeRef.current(update.state.doc.toString());
-          }
-        }),
-        EditorView.domEventHandlers({
-          blur: (_, view) => {
-            onBlurRef.current?.(view.state.doc.toString());
-            return false;
-          },
-        }),
-      ];
+          }),
+        ];
 
-      if (theme.isDark) {
-        extensions.push(oneDark);
-      }
+        if (theme.isDark) {
+          extensions.push(oneDark);
+        }
 
-      view = new EditorView({
-        state: EditorState.create({
-          doc: valueRef.current,
-          extensions,
-        }),
-        parent: containerRef.current,
-      });
-      viewRef.current = view;
-    }).catch(err => console.error);
+        view = new EditorView({
+          state: EditorState.create({
+            doc: valueRef.current,
+            extensions,
+          }),
+          parent: containerRef.current,
+        });
+        viewRef.current = view;
+
+        if (autoFocus && !hasAutoFocusedRef.current) {
+          hasAutoFocusedRef.current = true;
+          requestAnimationFrame(() => {
+            if (!cancelled) {
+              view?.focus();
+            }
+          });
+        }
+      })
+      .catch((err) => console.error);
 
     return () => {
       cancelled = true;

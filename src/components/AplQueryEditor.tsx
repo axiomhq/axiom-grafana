@@ -68,14 +68,17 @@ export function APLQueryEdtior({
   value,
   onRunQuery,
   onChange,
-  datasource
+  datasource,
+  autoFocus = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   onRunQuery: () => void;
   datasource: DataSource;
+  autoFocus?: boolean;
 }) {
   const [aplEditorContent, setAplEditorContent] = React.useState('');
+  const hasAutoFocusedRef = React.useRef(false);
   if (value !== aplEditorContent) {
     // query.apl could've changed from the outside (e.g. when a history query
     // is ran), so we need to update the state.
@@ -96,6 +99,15 @@ export function APLQueryEdtior({
         editor.executeEdits(null, [{ range: new monaco.Range(1, 1, 1, 1), text: placeholder }]);
       }
     });
+  };
+
+  const focusEditor = (editor: any) => {
+    if (!autoFocus || hasAutoFocusedRef.current) {
+      return;
+    }
+
+    hasAutoFocusedRef.current = true;
+    setTimeout(() => editor.focus(), 0);
   };
 
   return (
@@ -127,12 +139,17 @@ export function APLQueryEdtior({
         }
 
         const kustoLanguage = monaco.languages.getLanguages().find((l) => l.id === kustoLanguageId);
+        const initializeEditor = () => {
+          setAplEditorContent(value);
+          addPlaceholder(editor, monaco);
+          focusEditor(editor);
+        };
+
         if (kustoLanguage) {
           // If the kusto language is already registered, we can proceed immediately
           setTimeout(() => {
             // using timeout to  ensure the editor is fully loaded and we can have syntax highlighting on initial render
-            setAplEditorContent(value);
-            addPlaceholder(editor, monaco);
+            initializeEditor();
           }, 200);
         } else {
           // If the kusto language isn't registered, we need to wait for it to finish loading
@@ -141,8 +158,7 @@ export function APLQueryEdtior({
               disposable.dispose();
               resolve(undefined);
               setTimeout(() => {
-                setAplEditorContent(value);
-                addPlaceholder(editor, monaco);
+                initializeEditor();
               }, 200);
             });
           });

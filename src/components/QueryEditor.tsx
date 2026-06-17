@@ -1,6 +1,6 @@
 import React, { FormEvent, useEffect } from 'react';
 import { FieldSet, Field, InlineField, InlineFieldRow, InlineSwitch, FilterPill, Stack } from '@grafana/ui';
-import { QueryEditorProps } from '@grafana/data';
+import { CoreApp, QueryEditorProps } from '@grafana/data';
 import type { DataSource } from '../datasource';
 import { AxiomDataSourceOptions, AxiomQuery } from '../types';
 import { migrateAxiomQuery, shouldMigrateAxiomQuery } from '../queryMigration';
@@ -16,9 +16,10 @@ function hasRunnableQuery(value: string) {
   });
 }
 
-export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) {
+export function QueryEditor({ query, onChange, onRunQuery, datasource, app }: Props) {
   const migratedQuery = migrateAxiomQuery(query);
   const queryText = migratedQuery.query;
+  const autoFocusEditor = app === CoreApp.Explore;
 
   useEffect(() => {
     if (shouldMigrateAxiomQuery(query)) {
@@ -69,6 +70,7 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
                 onChange({ ...migratedQuery, query: mpl });
               }}
               datasource={datasource}
+              autoFocus={autoFocusEditor}
             />
           ) : (
             <APLQueryEdtior
@@ -78,6 +80,7 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
               value={queryText}
               datasource={datasource}
               onRunQuery={onRunQuery}
+              autoFocus={autoFocusEditor}
             />
           )}
         </Field>
