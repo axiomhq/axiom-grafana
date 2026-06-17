@@ -10,6 +10,17 @@ const isClientSide = typeof window !== 'undefined';
 
 const placeholder = '// Enter an APL query (run with Ctrl/Cmd+Enter)';
 
+function normalizeEditorQuery(value: string) {
+  return value.trim() === placeholder ? '' : value;
+}
+
+function hasRunnableQuery(value: string) {
+  return value.split('\n').some((line) => {
+    const trimmed = line.trim();
+    return trimmed !== '' && !trimmed.startsWith('//');
+  });
+}
+
 const getWorker = (_: string, label: string) => {
   let targetLabel = label;
 
@@ -90,9 +101,12 @@ export function APLQueryEdtior({
   return (
     <CodeEditor
       onBlur={(apl) => {
-        onChange(apl);
-        setAplEditorContent(apl);
-        onRunQuery();
+        const query = normalizeEditorQuery(apl);
+        onChange(query);
+        setAplEditorContent(query);
+        if (hasRunnableQuery(query)) {
+          onRunQuery();
+        }
       }}
       height="140px"
       width="500"
@@ -139,10 +153,12 @@ export function APLQueryEdtior({
           label: 'Submit query',
           keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
           run: async function (ed) {
-            const apl = ed.getValue();
-            onChange(apl);
-            setAplEditorContent(apl);
-            onRunQuery();
+            const query = normalizeEditorQuery(ed.getValue());
+            onChange(query);
+            setAplEditorContent(query);
+            if (hasRunnableQuery(query)) {
+              onRunQuery();
+            }
           },
         });
 

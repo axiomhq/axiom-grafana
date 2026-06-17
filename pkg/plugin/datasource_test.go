@@ -40,6 +40,45 @@ func TestQueryData(t *testing.T) {
 	require.Len(t, resp.Responses, 3, "QueryData must return a response for each query")
 }
 
+func TestQueryDataSkipsEmptyQueries(t *testing.T) {
+	requestCount := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer upstream.Close()
+
+	ds := Datasource{
+		api: axiomapi.NewClient(&config.PluginConfig{
+			APIHost: upstream.URL,
+			EdgeURL: upstream.URL,
+		}),
+	}
+
+	resp, err := ds.QueryData(
+		context.Background(),
+		&backend.QueryDataRequest{
+			Queries: []backend.DataQuery{
+				{RefID: "A", JSON: json.RawMessage(`{"kind":"apl","query":""}`)},
+				{RefID: "B", JSON: json.RawMessage(`{"kind":"apl","query":"   "}`)},
+				{RefID: "C", JSON: json.RawMessage(`{"kind":"mpl","query":"\n\t"}`)},
+				{RefID: "D", JSON: json.RawMessage(`{"kind":"apl","apl":"   "}`)},
+				{RefID: "E", JSON: json.RawMessage(`{"kind":"apl","query":"// Enter an APL query (run with Ctrl/Cmd+Enter)"}`)},
+				{RefID: "F", JSON: json.RawMessage(`{"kind":"mpl","query":"// Enter an APL query (run with Ctrl/Cmd+Enter)"}`)},
+				{RefID: "G", JSON: json.RawMessage(`{"kind":"apl","query":"\n  // only a comment\n\t"}`)},
+			},
+		},
+	)
+	require.NoError(t, err)
+	require.Zero(t, requestCount)
+	require.Len(t, resp.Responses, 7)
+
+	for _, res := range resp.Responses {
+		require.NoError(t, res.Error)
+		require.Empty(t, res.Frames)
+	}
+}
+
 func TestResourceHandlerFetchesEscapedMetricAutocompleteValues(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

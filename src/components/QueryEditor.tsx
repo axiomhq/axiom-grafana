@@ -9,6 +9,13 @@ import { APLQueryEdtior } from './AplQueryEditor';
 
 type Props = QueryEditorProps<DataSource, AxiomQuery, AxiomDataSourceOptions>;
 
+function hasRunnableQuery(value: string) {
+  return value.split('\n').some((line) => {
+    const trimmed = line.trim();
+    return trimmed !== '' && !trimmed.startsWith('//');
+  });
+}
+
 export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) {
   const migratedQuery = migrateAxiomQuery(query);
   const queryText = migratedQuery.query;
@@ -32,7 +39,9 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) 
       kind: 'mpl',
       query: mpl,
     });
-    onRunQuery();
+    if (hasRunnableQuery(mpl)) {
+      onRunQuery();
+    }
   };
 
   return (

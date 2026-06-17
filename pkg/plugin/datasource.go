@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/axiomhq/axiom-grafana/pkg/axiomapi"
@@ -120,11 +121,11 @@ func (d *Datasource) execQuery(ctx context.Context, query concurrent.Query) (res
 		return backend.ErrDataResponse(backend.StatusInternal, "Could not parse query")
 	}
 
-	if (qm.Query == nil || *qm.Query == "") && qm.APL != nil {
+	if isEmptyQuery(qm.Query) && qm.APL != nil {
 		qm.Query = qm.APL
 	}
 
-	if qm.Query == nil || *qm.Query == "" {
+	if isEmptyQuery(qm.Query) {
 		return backend.DataResponse{}
 	}
 
@@ -153,6 +154,21 @@ func (d *Datasource) execQuery(ctx context.Context, query concurrent.Query) (res
 	}
 
 	return *queryResponse
+}
+
+func isEmptyQuery(query *string) bool {
+	if query == nil {
+		return true
+	}
+
+	for _, line := range strings.Split(*query, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, "//") {
+			return false
+		}
+	}
+
+	return true
 }
 
 // queryEvents executes an APL query against the configured endpoint.
