@@ -7,6 +7,7 @@ import { EditorState, Prec } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import { acceptCompletion } from '@codemirror/autocomplete';
 import { indentWithTab } from '@codemirror/commands';
+import { indentUnit } from '@codemirror/language';
 import { oneDark } from '@codemirror/theme-one-dark';
 import {
   mplHighlighter,
@@ -21,15 +22,24 @@ import type { DataSource } from '../datasource';
 import { MPL_SYSTEM_PARAMS } from '../mpl/constants';
 
 const editorHeight = 140;
+const editorTabSize = 2;
+const editorIndentUnit = '  ';
 
 function getMplTokenStyles(theme: GrafanaTheme2) {
   const isDark = theme.isDark;
+  const editorVerticalPadding = `${0.5 * theme.spacing.gridSize}px`;
   return css({
     '& .cm-editor': {
       height: '100%',
     },
     '& .cm-scroller': {
       overflow: 'auto',
+    },
+    '& .cm-content': {
+      padding: `${editorVerticalPadding} 0`,
+    },
+    '& .cm-lineNumbers .cm-gutterElement': {
+      minWidth: '4ch',
     },
     // Syntax highlighting
     '& .mpl-keyword': { color: isDark ? '#c678dd' : '#7c3aed', fontWeight: 500 },
@@ -133,6 +143,8 @@ export function MplQueryCodeMirror({ value, onChange, onBlur, onRunQuery, dataso
 
         const extensions = [
           basicSetup,
+          EditorState.tabSize.of(editorTabSize),
+          indentUnit.of(editorIndentUnit),
           Prec.highest(
             keymap.of([
               { key: 'Tab', run: acceptCompletion },
