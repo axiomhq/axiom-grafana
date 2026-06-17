@@ -20,9 +20,17 @@ import { ensureMplInit } from '../mpl/ensureMplInit';
 import type { DataSource } from '../datasource';
 import { MPL_SYSTEM_PARAMS } from '../mpl/constants';
 
+const editorHeight = 140;
+
 function getMplTokenStyles(theme: GrafanaTheme2) {
   const isDark = theme.isDark;
   return css({
+    '& .cm-editor': {
+      height: '100%',
+    },
+    '& .cm-scroller': {
+      overflow: 'auto',
+    },
     // Syntax highlighting
     '& .mpl-keyword': { color: isDark ? '#c678dd' : '#7c3aed', fontWeight: 500 },
     '& .mpl-variable': { color: isDark ? '#e06c75' : '#0550ae' },
@@ -207,5 +215,5 @@ export function MplQueryCodeMirror({ value, onChange, onBlur, onRunQuery, dataso
     }
   }, [value]);
 
-  return <div ref={containerRef} className={tokenStyles} style={{ minHeight: 200 }} />;
+  return <div ref={containerRef} className={tokenStyles} style={{ height: editorHeight }} />;
 }
