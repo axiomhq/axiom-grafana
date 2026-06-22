@@ -1,15 +1,48 @@
-import React, { ChangeEvent, useState } from 'react';
+import React, { ChangeEvent, useEffect, useMemo, useState } from 'react';
 import { InlineField, SecretInput, Input, Label, Alert } from '@grafana/ui';
 import { DataSourcePluginOptionsEditorProps } from '@grafana/data';
 import { AxiomDataSourceOptions, MySecureJsonData } from '../types';
 
 interface Props extends DataSourcePluginOptionsEditorProps<AxiomDataSourceOptions, MySecureJsonData> {}
 
+function legacyEdgeToEdgeURL(edge: string): string {
+  const trimmedEdge = edge.trim().replace(/\/+$/, '');
+
+  if (!trimmedEdge) {
+    return '';
+  }
+
+  if (/^https?:\/\//i.test(trimmedEdge)) {
+    return trimmedEdge;
+  }
+
+  return `https://${trimmedEdge}`;
+}
+
 export function ConfigEditor(props: Props) {
   const { onOptionsChange, options } = props;
+  const jsonData = useMemo(() => (options.jsonData || {}) as AxiomDataSourceOptions, [options.jsonData]);
+  const secureJsonData = (options.secureJsonData || {}) as MySecureJsonData;
   const [shouldShowOrgId, setShowOrgId] = useState(
     !!options.jsonData.orgID && options.secureJsonData?.accessToken.startsWith('xapt-')
   );
+
+  useEffect(() => {
+    const migratedEdgeURL = jsonData.edgeURL || (jsonData.edge ? legacyEdgeToEdgeURL(jsonData.edge) : '');
+
+    if (!migratedEdgeURL || (jsonData.edgeURL === migratedEdgeURL && !jsonData.edge)) {
+      return;
+    }
+
+    const { edge, ...nextJsonData } = jsonData;
+    onOptionsChange({
+      ...options,
+      jsonData: {
+        ...nextJsonData,
+        edgeURL: migratedEdgeURL,
+      },
+    });
+  }, [jsonData, onOptionsChange, options]);
 
   const onHostChange = (event: ChangeEvent<HTMLInputElement>) => {
     const jsonData = {
@@ -19,17 +52,10 @@ export function ConfigEditor(props: Props) {
     onOptionsChange({ ...options, jsonData });
   };
 
-  const onEdgeChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const jsonData = {
-      ...options.jsonData,
-      edge: event.target.value,
-    };
-    onOptionsChange({ ...options, jsonData });
-  };
-
   const onEdgeURLChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const { edge, ...nextJsonData } = options.jsonData;
     const jsonData = {
-      ...options.jsonData,
+      ...nextJsonData,
       edgeURL: event.target.value,
     };
     onOptionsChange({ ...options, jsonData });
@@ -74,9 +100,6 @@ export function ConfigEditor(props: Props) {
   };
 
   const { secureJsonFields } = options;
-  const jsonData = (options.jsonData || {}) as AxiomDataSourceOptions;
-  const secureJsonData = (options.secureJsonData || {}) as MySecureJsonData;
-
   return (
     <div className="gf-form-group">
       <Label description={<span>Create an API Token from your Axiom account settings.</span>}>
@@ -125,21 +148,13 @@ export function ConfigEditor(props: Props) {
         </InlineField>
       </div>
       <div>
-        <Label description="Optional edge configuration for data locality. Set the regional edge domain or an explicit edge URL. Edge URL takes precedence if both are set.">
+        <Label description="Optional edge configuration for data locality.">
           <h6>Edge (Optional)</h6>
         </Label>
-        <InlineField label="Edge" labelWidth={17} tooltip="Regional edge domain (e.g., eu-central-1.aws.edge.axiom.co). Queries route to https://{edge}/v1/query/_apl.">
-          <Input
-            onChange={onEdgeChange}
-            value={jsonData.edge || ''}
-            placeholder="e.g., eu-central-1.aws.edge.axiom.co"
-            width={40}
-          />
-        </InlineField>
-        <InlineField label="Edge URL" labelWidth={17} tooltip="Explicit edge URL. If a path is provided, it is used as-is. Takes precedence over Edge domain.">
+        <InlineField label="Edge URL" labelWidth={17} tooltip="Explicit edge URL. If a path is provided, it is used as-is.">
           <Input
             onChange={onEdgeURLChange}
-            value={jsonData.edgeURL || ''}
+            value={jsonData.edgeURL || (jsonData.edge ? legacyEdgeToEdgeURL(jsonData.edge) : '')}
             placeholder="e.g., https://custom-edge.example.com"
             width={40}
           />

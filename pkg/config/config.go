@@ -15,7 +15,7 @@ type PluginConfig struct {
 	AccessToken string `json:"accessToken"`
 	APIHost     string `json:"apiHost"`
 	Edge        string `json:"edge"`
-	EdgeURL     string `json:"edgeUrl"`
+	EdgeURL     string `json:"edgeURL"`
 }
 
 func ParseConfig(ctx context.Context, settings backend.DataSourceInstanceSettings) (*PluginConfig, error) {

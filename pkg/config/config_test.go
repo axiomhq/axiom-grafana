@@ -1,8 +1,11 @@
 package config
 
 import (
+	"context"
+	"encoding/json"
 	"testing"
 
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/stretchr/testify/require"
 )
 
@@ -78,4 +81,33 @@ func TestResolveBaseURL(t *testing.T) {
 			require.Equal(t, test.expected, endpoint)
 		})
 	}
+}
+
+func TestParseConfigReadsEdgeURL(t *testing.T) {
+	settings := backend.DataSourceInstanceSettings{
+		JSONData: json.RawMessage(`{
+			"apiHost": "https://api.axiom.co",
+			"edge": "legacy.edge.axiom.co",
+			"edgeURL": "https://primary.edge.axiom.co"
+		}`),
+	}
+
+	cfg, err := ParseConfig(context.Background(), settings)
+
+	require.NoError(t, err)
+	require.Equal(t, "https://primary.edge.axiom.co", cfg.EdgeURL)
+}
+
+func TestParseConfigFallsBackToLegacyEdgeDomain(t *testing.T) {
+	settings := backend.DataSourceInstanceSettings{
+		JSONData: json.RawMessage(`{
+			"apiHost": "https://api.axiom.co",
+			"edge": "eu-central-1.aws.edge.axiom.co"
+		}`),
+	}
+
+	cfg, err := ParseConfig(context.Background(), settings)
+
+	require.NoError(t, err)
+	require.Equal(t, "https://eu-central-1.aws.edge.axiom.co", cfg.EdgeURL)
 }
