@@ -45,6 +45,16 @@ The Axiom Datasource Plugin provides a custom query editor to build and visualiz
 2. Select the Axiom data source.
 3. Use the query editor to choose the desired metrics, dimensions, and filters.
 
+### Metric series labels
+
+For MPL metric queries, Grafana legends use the metric name plus the tag set by default. To make legends easier to scan, the plugin uses tag values as the leading label when tags are present, for example `200 | POST | /checkout {status=200, method=POST, route=/checkout}`.
+
+You can control the full legend dynamically from your query by adding a `__label` tag. The plugin uses the `__label` value as the series label and hides the normal `{tag=value}` suffix from the legend, while still leaving those labels available in Grafana:
+
+```mpl
+extend __label = "${`k8s.pod.name`}"
+```
+
 ## Troubleshooting
 
 If you encounter any issues or need help, please join our [Discord community](https://axiom.co/discord) for assistance and support, or open an issue on the [GitHub repository](https://github.com/axiomhq/axiom-grafana/issues).

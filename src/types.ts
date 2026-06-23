@@ -1,14 +1,30 @@
 import { DataQuery, DataSourceJsonData } from '@grafana/schema';
 
+export const QUERY_MODEL_VERSION = '2.0';
+
+export type QueryModelVersion = typeof QUERY_MODEL_VERSION;
+export type AxiomQueryKind = 'apl' | 'mpl';
+
 export interface AxiomQuery extends DataQuery {
-  apl: string;
+  version?: QueryModelVersion;
+  kind?: AxiomQueryKind | null;
+  query: string;
+  apl?: string;
   totals: boolean;
+  dataset?: string;
+  metric?: string;
+  tag?: string;
+  includeTotalsTableFrame?: boolean;
+  includeLogsVolumeFrame?: boolean;
+  supportingQueryType?: 'LogsVolume';
   startTime?: string;
   endTime?: string;
 }
 
 export const DEFAULT_QUERY: Partial<AxiomQuery> = {
-  apl: '',
+  version: QUERY_MODEL_VERSION,
+  kind: 'apl',
+  query: '',
   totals: false,
 };
 
@@ -19,10 +35,8 @@ export interface AxiomDataSourceOptions extends DataSourceJsonData {
   apiHost: string;
   orgID: string;
   /**
-   * Optional regional edge domain for ingest and query operations
-   * (e.g., "eu-central-1.aws.edge.axiom.co").
-   * When set, queries are routed to https://{edge}/v1/query/_apl.
-   * All other API calls (schema lookup, health checks) continue to use apiHost.
+   * Legacy regional edge domain for ingest and query operations.
+   * Kept for migrating existing datasource settings to edgeURL.
    */
   edge?: string;
   /**

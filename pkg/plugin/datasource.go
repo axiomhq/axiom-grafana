@@ -3,13 +3,13 @@ package plugin
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"runtime/debug"
+	"strings"
 	"time"
 
-	"github.com/axiomhq/axiom-go/axiom"
-	axiQuery "github.com/axiomhq/axiom-go/axiom/query"
+	"github.com/axiomhq/axiom-grafana/pkg/axiomapi"
+	"github.com/axiomhq/axiom-grafana/pkg/config"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
@@ -29,64 +29,41 @@ var (
 	_ backend.CallResourceHandler   = (*Datasource)(nil)
 )
 
-// NewDatasource creates a new datasource instance.
-func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
-	logger := log.DefaultLogger.FromContext(ctx)
-	accessToken := ""
-	if token, exists := settings.DecryptedSecureJSONData["accessToken"]; exists {
-		// Use the decrypted API key.
-		accessToken = token
-	}
-
-	var data map[string]any
-	err := json.Unmarshal(settings.JSONData, &data)
-	if err != nil {
-		logger.Error("failed to unmarshal settings", "error", err)
-		return nil, err
-	}
-	host := "https://api.axiom.co"
-	if apiHost, exists := data["apiHost"]; exists {
-		host = apiHost.(string)
-	}
-
-	edge := checkString(data["edge"])
-	edgeURL := checkString(data["edgeURL"])
-
-	orgID := checkString(data["orgID"])
-
-	client, err := axiom.NewClient(
-		axiom.SetToken(accessToken),
-		axiom.SetURL(host),
-		axiom.SetOrganizationID(orgID),
-		axiom.SetUserAgent(fmt.Sprintf("axiom-grafana/v%s", Version)),
-	)
-	if err != nil {
-		logger.Error("failed to create axiom client", "error", err)
-		return nil, err
-	}
-
-	ds := &Datasource{
-		client:  client,
-		apiHost: host,
-		edge:    edge,
-		edgeURL: edgeURL,
-	}
-	resourceHandler := ds.newResourceHandler()
-	ds.CallResourceHandler = resourceHandler
-
-	logger.Debug("datasource & client created", "host", host)
-
-	return ds, nil
-}
-
 // Datasource is an example datasource which can respond to data queries, reports
 // its health and has streaming skills.
 type Datasource struct {
 	backend.CallResourceHandler
-	apiHost string
-	edge    string // Optional regional edge domain (e.g., "eu-central-1.aws.edge.axiom.co")
-	edgeURL string // Optional explicit edge URL (takes precedence over edge)
-	client  *axiom.Client
+	api *axiomapi.Client
+}
+
+type queryModel struct {
+	Version                 *string `json:"version"`
+	APL                     *string `json:"apl"`
+	Kind                    *string `json:"kind"`
+	Query                   *string `json:"query"`
+	SupportingQueryType     *string `json:"supportingQueryType"`
+	Totals                  bool    `json:"totals"`
+	IncludeTotalsTableFrame bool    `json:"includeTotalsTableFrame"`
+	IncludeLogsVolumeFrame  bool    `json:"includeLogsVolumeFrame"`
+}
+
+// NewDatasource creates a new datasource instance.
+func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+	logger := log.DefaultLogger.FromContext(ctx)
+	config, err := config.ParseConfig(ctx, settings)
+	if err != nil {
+		logger.Error("Failed to parse config", "error", err.Error())
+		return nil, err
+	}
+	api := axiomapi.NewClient(config)
+
+	ds := &Datasource{
+		api: api,
+	}
+	resourceHandler := ds.newResourceHandler()
+	ds.CallResourceHandler = resourceHandler
+
+	return ds, nil
 }
 
 // Dispose here tells plugin SDK that plugin wants to clean up resources when a new instance
@@ -116,15 +93,10 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 		}
 	}()
 
-	return concurrent.QueryData(ctx, req, d.query, 10)
+	return concurrent.QueryData(ctx, req, d.execQuery, 10)
 }
 
-type queryModel struct {
-	APL    string `json:"apl"`
-	Totals bool   `json:"totals"`
-}
-
-func (d *Datasource) query(ctx context.Context, query concurrent.Query) backend.DataResponse {
+func (d *Datasource) execQuery(ctx context.Context, query concurrent.Query) (response backend.DataResponse) {
 	logger := log.DefaultLogger.FromContext(ctx)
 	// log panic
 	defer func() {
@@ -132,15 +104,12 @@ func (d *Datasource) query(ctx context.Context, query concurrent.Query) backend.
 			err, ok := r.(error)
 			if !ok {
 				err = fmt.Errorf("pkg: %v", r)
-				logger.Error(err.Error())
-				return
 			}
 			logger.Error(err.Error())
 			logger.Error(string(debug.Stack()))
+			response = backend.ErrDataResponse(backend.StatusInternal, "Unexpected error while running query")
 		}
 	}()
-
-	var response backend.DataResponse
 
 	// Unmarshal the JSON into our queryModel.
 	var qm queryModel
@@ -152,133 +121,132 @@ func (d *Datasource) query(ctx context.Context, query concurrent.Query) backend.
 		return backend.ErrDataResponse(backend.StatusInternal, "Could not parse query")
 	}
 
-	if qm.APL == "" {
+	if isEmptyQuery(qm.Query) && qm.APL != nil {
+		qm.Query = qm.APL
+	}
+
+	if isEmptyQuery(qm.Query) {
 		return backend.DataResponse{}
 	}
 
+	kind := "apl"
+	if qm.Kind != nil && *qm.Kind != "" {
+		kind = *qm.Kind
+	}
+
+	var queryResponse *backend.DataResponse
+
 	// make request to axiom
-	// Use custom query method that handles edge endpoints and smart URL detection
-	result, err := d.QueryEdge(ctx, qm.APL, query.DataQuery.TimeRange.From, query.DataQuery.TimeRange.To)
+	if isLogsVolumeQuery(query.DataQuery, &qm) {
+		queryResponse, err = d.queryLogsVolume(ctx, &qm, query.DataQuery, datasourceName(query.PluginContext))
+	} else if kind == "mpl" {
+		queryResponse, err = d.queryMetrics(ctx, &qm, query.DataQuery.RefID, query.DataQuery.TimeRange.From, query.DataQuery.TimeRange.To, query.DataQuery.MaxDataPoints)
+	} else {
+		queryResponse, err = d.queryEvents(ctx, &qm, query.DataQuery, datasourceName(query.PluginContext))
+	}
 	if err != nil {
 		logger.Error("failed to query axiom", "error", err)
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("axiom error: %v", err.Error()))
 	}
-
-	var frame *data.Frame
-	var newFrame *data.Frame
-	if len(result.Tables) > 1 {
-		if qm.Totals {
-			frame = buildFrame(ctx, &result.Tables[1])
-		} else {
-			frame = buildFrame(ctx, &result.Tables[0])
-		}
-
-		newFrame, err = data.LongToWide(frame, nil)
-		if err != nil {
-			logger.Error("transformation from long to wide failed", "error", err.Error())
-		}
-	} else {
-		frame = buildFrame(ctx, &result.Tables[0])
+	if queryResponse == nil {
+		logger.Error("query returned nil response")
+		return backend.ErrDataResponse(backend.StatusInternal, "Query returned no response")
 	}
 
-	if newFrame != nil {
-		response.Frames = append(response.Frames, newFrame)
-	} else {
+	return *queryResponse
+}
+
+func isEmptyQuery(query *string) bool {
+	if query == nil {
+		return true
+	}
+
+	for _, line := range strings.Split(*query, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, "//") {
+			return false
+		}
+	}
+
+	return true
+}
+
+// queryEvents executes an APL query against the configured endpoint.
+// Dashboard panels ask for includeLogsVolumeFrame so raw log queries still
+// produce a numeric frame for Grafana's default Time series visualization.
+func (d *Datasource) queryEvents(ctx context.Context, q *queryModel, query backend.DataQuery, datasourceName string) (*backend.DataResponse, error) {
+	reqBody := axiomapi.APLQueryRequest{
+		APL:       q.Query,
+		StartTime: query.TimeRange.From,
+		EndTime:   query.TimeRange.To,
+	}
+
+	result, err := d.api.QueryAPL(ctx, reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	frameOptions := aplFrameOptions{
+		FieldMetaByName: fieldMetaByNameForResponse(result),
+		Status:          result.Status,
+		TraceID:         result.TraceID,
+	}
+	if q.Query != nil {
+		frameOptions.Query = *q.Query
+	}
+
+	frames, err := newAPLResponseFrameBuilder(q.Totals, q.IncludeTotalsTableFrame).BuildFrames(ctx, result, frameOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	var response backend.DataResponse
+	if shouldPrependLogsVolumeFrame(q, frames) {
+		volumeResponse, err := d.queryLogsVolume(ctx, q, query, datasourceName)
+		if err != nil {
+			return nil, err
+		}
+		response.Frames = append(response.Frames, volumeResponse.Frames...)
+	}
+	response.Frames = append(response.Frames, frames...)
+	return &response, nil
+}
+
+func shouldPrependLogsVolumeFrame(q *queryModel, frames []*data.Frame) bool {
+	if !q.IncludeLogsVolumeFrame || len(frames) != 1 {
+		return false
+	}
+
+	// Branch on the built frame, not the raw query text: APL that starts from a
+	// log dataset can still aggregate into a normal time series or table.
+	return frames[0].Meta != nil && frames[0].Meta.Type == data.FrameTypeLogLines
+}
+
+// queryMetrics executes an MPL query against the configured edge endpoint
+func (d *Datasource) queryMetrics(ctx context.Context, q *queryModel, refID string, startTime, endTime time.Time, chartWidth int64) (*backend.DataResponse, error) {
+	reqBody := axiomapi.MPLQueryRequest{
+		MPL:        q.Query,
+		StartTime:  startTime,
+		EndTime:    endTime,
+		ChartWidth: chartWidth,
+	}
+
+	res, err := d.api.QueryMetrics(ctx, reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	var response backend.DataResponse
+	frameBuilder := newMetricsFrameBuilder(res.Metadata, refID)
+
+	for _, group := range res.Series {
+		frame := frameBuilder.Build(group)
+		applyAxiomTraceID(frame, res.TraceID)
 		response.Frames = append(response.Frames, frame)
 	}
 
-	return response
-}
-
-func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
-	logger := log.DefaultLogger.FromContext(ctx)
-	frame := data.NewFrame("response")
-
-	// define fields
-	fields := make([]*data.Field, 0, len(result.Fields))
-
-	for i, f := range result.Fields {
-		f := f
-		i := i
-
-		var field *data.Field
-		switch f.Type {
-		case "datetime":
-			field = data.NewField(f.Name, nil, []time.Time{})
-		case "integer":
-			field = data.NewField(f.Name, nil, []*float64{})
-		case "float":
-			field = data.NewField(f.Name, nil, []*float64{})
-		case "bool":
-			field = data.NewField(f.Name, nil, []*bool{})
-		case "timespan":
-			field = data.NewField(f.Name, nil, []*string{})
-		case "unknown":
-			// default to string
-			field = data.NewField(f.Name, nil, []*string{})
-		case "array":
-			v := result.Columns[i][0]
-			switch v.(type) {
-			case []float64:
-				field = data.NewField(f.Name, nil, [][]*float64{})
-			default:
-				field = data.NewField(f.Name, nil, [][]*string{})
-			}
-		default:
-			field = data.NewField(f.Name, nil, []*string{})
-		}
-
-		fields = append(fields, field)
-	}
-
-	for colIndex, col := range result.Columns {
-		for i := 0; i < len(col); i++ {
-			colIndex := colIndex
-			i := i
-
-			// check if the value is nil
-			// if it is, append nil to the field, skip more processing
-			if col[i] == nil {
-				fields[colIndex].Append(nil)
-				continue
-			}
-
-			// check the type and parse it accordingly
-			switch result.Fields[colIndex].Type {
-			case "datetime":
-				// parse time
-				t, err := time.Parse(time.RFC3339, col[i].(string))
-				if err != nil {
-					logger.Warn("Failed to parse time", "time", col[i])
-					fields[colIndex].Append(time.Time{})
-					continue
-				}
-				fields[colIndex].Append(t)
-			case "integer":
-				num := col[i].(float64)
-				fields[colIndex].Append(&num)
-			case "float":
-				num := col[i].(float64)
-				fields[colIndex].Append(&num)
-			case "string", "unknown":
-				txt := col[i].(string)
-				fields[colIndex].Append(&txt)
-			case "bool":
-				b := col[i].(bool)
-				fields[colIndex].Append(&b)
-			case "timespan":
-				num := col[i].(string)
-				fields[colIndex].Append(&num)
-			default:
-				txt := fmt.Sprintf("%v", col[i])
-				fields[colIndex].Append(&txt)
-			}
-
-		}
-	}
-	frame.Fields = fields
-
-	return frame
+	// extract the data from the response
+	return &response, nil
 }
 
 // CheckHealth handles health checks sent from Grafana to the plugin.
@@ -286,49 +254,32 @@ func buildFrame(ctx context.Context, result *axiQuery.Table) *data.Frame {
 // datasource configuration page which allows users to verify that
 // a datasource is working as expected.
 func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
-	logger := log.DefaultLogger.FromContext(ctx)
 	// first try to validate the credentials
-	err := d.client.ValidateCredentials(ctx)
-	if err != nil {
-		logger.Error("Failed to validate credentials", "error", err)
-		return &backend.CheckHealthResult{
-			Status: backend.HealthStatusError,
-			// simple error message, not the actual error
-			Message: "error with datasource",
-		}, nil
-	}
+	// err := d.client.ValidateCredentials(ctx)
+	// if err != nil {
+	// 	logger.Error("Failed to validate credentials", "error", err)
+	// 	return &backend.CheckHealthResult{
+	// 		Status: backend.HealthStatusError,
+	// 		// simple error message, not the actual error
+	// 		Message: "error with datasource",
+	// 	}, nil
+	// }
 
 	// perform an APL query that we expect to fail (empty)
 	// validate that we get HTTP 400, this gives high confidence
 	// that we got past network and authentication issues and looked at our request
 	// it also should be somewhat inexpensive for the server
-	var axiErr axiom.HTTPError
-	var msg = "Did not receive expected error"
-	_, err = d.client.Query(ctx, "")
-	if err != nil && errors.As(err, &axiErr) {
-		if axiErr.Status == 400 {
-			// expected 400 for empty query, HEALTHY
-			return &backend.CheckHealthResult{
-				Status:  backend.HealthStatusOk,
-				Message: "Data source is working",
-			}, nil
-		}
-	}
-
+	// var msg = "Did not receive expected error"
+	err := d.api.CheckHealth(ctx)
 	if err != nil {
-		logger.Error("Failed to query Axiom", "error", err)
-		msg = "Failed to query Axiom"
+		return &backend.CheckHealthResult{
+			Status:  backend.HealthStatusError,
+			Message: err.Error(),
+		}, nil
 	}
-
 	return &backend.CheckHealthResult{
-		Status:  backend.HealthStatusError,
-		Message: msg,
+		Status:  backend.HealthStatusOk,
+		Message: "OK",
 	}, nil
-}
 
-func checkString(i interface{}) string {
-	if str, ok := i.(string); ok {
-		return str
-	}
-	return ""
 }
