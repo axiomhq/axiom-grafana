@@ -109,6 +109,8 @@ const columnTypeForAxiomType = (axiomType: string): { Type: string; CslType: str
             return { Type: 'System.DateTime', CslType: 'datetime' };
         case 'timestamp':
             return { Type: 'System.DateTime', CslType: 'datetime' };
+        case 'timespan':
+            return { Type: 'System.TimeSpan', CslType: 'timespan' };
         case 'string':
             return { Type: 'System.String', CslType: 'string' };
         case 'boolean':
