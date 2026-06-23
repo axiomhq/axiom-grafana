@@ -244,6 +244,11 @@ func (d *Datasource) queryMetrics(ctx context.Context, q *queryModel, refID stri
 		applyAxiomTraceID(frame, res.TraceID)
 		response.Frames = append(response.Frames, frame)
 	}
+	if q.IncludeTotalsTableFrame {
+		tableFrame := frameBuilder.BuildTable(res.Series)
+		applyAxiomTraceID(tableFrame, res.TraceID)
+		response.Frames = append(response.Frames, tableFrame)
+	}
 
 	// extract the data from the response
 	return &response, nil

@@ -290,6 +290,68 @@ func TestMPLQuerySendsChartWidthHeader(t *testing.T) {
 	require.NoError(t, resp.Responses["A"].Error)
 }
 
+func TestMPLQueryReturnsExploreTableFrameWhenRequested(t *testing.T) {
+	start := time.Date(2026, 6, 11, 2, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 6, 11, 3, 0, 0, 0, time.UTC)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/query/_mpl", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{
+			"metadata":{"unit":"short","warnings":[]},
+			"series":[
+				{"resolution":60,"start":1781186400,"metric":"cpu","tags":{"__label":"api","pod.name":"api-7d9"},"data":[0.1,0.2]},
+				{"resolution":60,"start":1781186400,"metric":"memory","tags":{"__label":"api","pod.name":"api-7d9"},"data":[512]},
+				{"resolution":60,"start":1781186400,"metric":"cpu","tags":{"__label":"worker","pod.name":"worker-5f8"},"data":[0.7]}
+			]
+		}`))
+		require.NoError(t, err)
+	}))
+	defer upstream.Close()
+
+	ds := Datasource{
+		api: axiomapi.NewClient(&config.PluginConfig{
+			APIHost: upstream.URL,
+			EdgeURL: upstream.URL,
+		}),
+	}
+
+	resp, err := ds.QueryData(
+		context.Background(),
+		&backend.QueryDataRequest{
+			Queries: []backend.DataQuery{
+				{
+					RefID:     "A",
+					TimeRange: backend.TimeRange{From: start, To: end},
+					JSON:      json.RawMessage(`{"kind":"mpl","query":"fetch cpu","includeTotalsTableFrame":true}`),
+				},
+			},
+		},
+	)
+	require.NoError(t, err)
+	queryResp := resp.Responses["A"]
+	require.NoError(t, queryResp.Error)
+	require.Len(t, queryResp.Frames, 4)
+
+	tableFrame := queryResp.Frames[3]
+	require.NotNil(t, tableFrame.Meta)
+	require.EqualValues(t, data.VisTypeTable, tableFrame.Meta.PreferredVisualization)
+	require.Len(t, tableFrame.Fields, 4)
+	require.Equal(t, "__label", tableFrame.Fields[0].Name)
+	require.Equal(t, "pod.name", tableFrame.Fields[1].Name)
+	require.Equal(t, "cpu", tableFrame.Fields[2].Name)
+	require.Equal(t, "memory", tableFrame.Fields[3].Name)
+	require.Equal(t, "api", *tableFrame.Fields[0].At(0).(*string))
+	require.Equal(t, "worker", *tableFrame.Fields[0].At(1).(*string))
+	require.Equal(t, "api-7d9", *tableFrame.Fields[1].At(0).(*string))
+	require.Equal(t, "worker-5f8", *tableFrame.Fields[1].At(1).(*string))
+	require.Equal(t, 0.2, *tableFrame.Fields[2].At(0).(*float64))
+	require.Equal(t, 0.7, *tableFrame.Fields[2].At(1).(*float64))
+	require.Equal(t, float64(512), *tableFrame.Fields[3].At(0).(*float64))
+	require.Nil(t, tableFrame.Fields[3].At(1))
+}
+
 func TestQueryEventsPrependsLogsVolumeFrameForPanelLogQueries(t *testing.T) {
 	start := time.Date(2026, 6, 11, 2, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 6, 11, 3, 0, 0, 0, time.UTC)
@@ -1354,6 +1416,70 @@ func TestMetricsFrameBuilderUsesExplicitLabelTagForSeriesName(t *testing.T) {
 	require.Equal(t, "api-7d9", frame.Fields[1].Config.DisplayNameFromDS)
 	require.Equal(t, "api-7d9", frame.Fields[1].Labels["__label"])
 	require.Equal(t, "api-7d9", frame.Fields[1].Labels["pod.name"])
+}
+
+func TestMetricsFrameBuilderBuildsLabeledTableFrame(t *testing.T) {
+	cpuAPI := float64(0.2)
+	cpuAPIReplica := float64(0.4)
+	memAPI := float64(512)
+	cpuWorker := float64(0.8)
+
+	frame := newMetricsFrameBuilder(axiomapi.MetricsQueryMetadata{Unit: "short"}, "A").BuildTable(
+		[]axiomapi.MetricsQuerySeries{
+			{
+				Metric: "cpu",
+				Tags:   map[string]string{"__label": "api", "container.name": "app", "pod.name": "api-7d9"},
+				Data:   []*float64{nil, &cpuAPI},
+			},
+			{
+				Metric: "memory",
+				Tags:   map[string]string{"__label": "api", "container.name": "app", "pod.name": "api-7d9"},
+				Data:   []*float64{&memAPI},
+			},
+			{
+				Metric: "cpu",
+				Tags:   map[string]string{"__label": "api", "container.name": "sidecar", "pod.name": "api-8bc"},
+				Data:   []*float64{&cpuAPIReplica},
+			},
+			{
+				Metric: "cpu",
+				Tags:   map[string]string{"__label": "worker", "container.name": "app", "pod.name": "worker-5f8"},
+				Data:   []*float64{&cpuWorker},
+			},
+			{
+				Metric: "memory",
+				Tags:   map[string]string{"__label": "worker", "container.name": "app", "pod.name": "worker-5f8"},
+				Data:   []*float64{nil},
+			},
+		},
+	)
+
+	require.Equal(t, "A", frame.RefID)
+	require.NotNil(t, frame.Meta)
+	require.EqualValues(t, data.VisTypeTable, frame.Meta.PreferredVisualization)
+	require.Len(t, frame.Fields, 5)
+	require.Equal(t, "__label", frame.Fields[0].Name)
+	require.Equal(t, "container.name", frame.Fields[1].Name)
+	require.Equal(t, "pod.name", frame.Fields[2].Name)
+	require.Equal(t, "cpu", frame.Fields[3].Name)
+	require.Equal(t, "memory", frame.Fields[4].Name)
+	require.Equal(t, "api", *frame.Fields[0].At(0).(*string))
+	require.Equal(t, "api", *frame.Fields[0].At(1).(*string))
+	require.Equal(t, "worker", *frame.Fields[0].At(2).(*string))
+	require.Equal(t, "app", *frame.Fields[1].At(0).(*string))
+	require.Equal(t, "sidecar", *frame.Fields[1].At(1).(*string))
+	require.Equal(t, "app", *frame.Fields[1].At(2).(*string))
+	require.Equal(t, "api-7d9", *frame.Fields[2].At(0).(*string))
+	require.Equal(t, "api-8bc", *frame.Fields[2].At(1).(*string))
+	require.Equal(t, "worker-5f8", *frame.Fields[2].At(2).(*string))
+	require.Equal(t, cpuAPI, *frame.Fields[3].At(0).(*float64))
+	require.Equal(t, cpuAPIReplica, *frame.Fields[3].At(1).(*float64))
+	require.Equal(t, cpuWorker, *frame.Fields[3].At(2).(*float64))
+	require.Equal(t, memAPI, *frame.Fields[4].At(0).(*float64))
+	require.Nil(t, frame.Fields[4].At(1))
+	require.Nil(t, frame.Fields[4].At(2))
+	require.NotNil(t, frame.Fields[3].Config)
+	require.Equal(t, "short", frame.Fields[3].Config.Unit)
 }
 
 func TestMetricsFrameBuilderSetsDisplayNameFromRefIDWhenTagsAreEmpty(t *testing.T) {
