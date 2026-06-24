@@ -40,7 +40,7 @@ func ParseConfig(ctx context.Context, settings backend.DataSourceInstanceSetting
 	edge := util.CheckString(data["edge"])
 	edgeURL := util.CheckString(data["edgeURL"])
 
-	resolvedEdgeURL, err := resolveEdgeUrl(host, edge, edgeURL)
+	resolvedEdgeURL, err := resolveEdgeUrl(edge, edgeURL)
 	if err != nil {
 		logger.Error("failed to resolve correct axiom api/edge url", "error", err)
 		return nil, err
@@ -54,7 +54,7 @@ func ParseConfig(ctx context.Context, settings backend.DataSourceInstanceSetting
 	}, nil
 }
 
-func resolveEdgeUrl(apiHost string, edge string, edgeUrl string) (string, error) {
+func resolveEdgeUrl(edge string, edgeUrl string) (string, error) {
 	// Priority 1: edgeURL takes precedence
 	if edgeUrl != "" {
 		edgeUrl := strings.TrimSuffix(edgeUrl, "/")
@@ -69,10 +69,5 @@ func resolveEdgeUrl(apiHost string, edge string, edgeUrl string) (string, error)
 		return fmt.Sprintf("https://%s", edge), nil
 	}
 
-	// Default: use apiHost with legacy query path
-	if apiHost != "" {
-		return strings.TrimSuffix(apiHost, "/"), nil
-	}
-
-	return "https://api.axiom.co", nil
+	return "", fmt.Errorf("Edge URL is required. Please configure the Edge URL in the Axiom Grafana datasource settings.")
 }

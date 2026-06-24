@@ -383,27 +383,29 @@ func (api *Client) Do(req *http.Request, out any) (*http.Response, error) {
 	return resp, nil
 }
 
-// CheckHealth handles health checks sent from Grafana to the plugin.
-// The main use case for these health checks is the test button on the
-// datasource configuration page which allows users to verify that
-// a datasource is working as expected.
-func (api *Client) CheckHealth(ctx context.Context) error {
+// ValidateCredentials validates the credentials by performing an APL query that we expect to fail (empty)
+// validate that we get HTTP 422, this gives high confidence
+// that we got past network and authentication issues and looked at our request
+// it also should be somewhat inexpensive for the server
+func (api *Client) ValidateCredentials(ctx context.Context) error {
 	logger := log.DefaultLogger.FromContext(ctx)
 
-	// perform an APL query that we expect to fail (empty)
-	// validate that we get HTTP 400, this gives high confidence
-	// that we got past network and authentication issues and looked at our request
-	// it also should be somewhat inexpensive for the server
 	var axiErr axiom.HTTPError
+	logger.Debug(">>>> Checking health", "edgeURL", api.edgeURL)
 	path, err := url.JoinPath(api.edgeURL, "/v1/query/_apl")
 	if err != nil {
 		return err
 	}
+	logger.Debug(">>>> Path", "path", path)
 	r, err := api.NewRequest(ctx, http.MethodPost, path, nil)
-	_, err = api.client.Do(r)
+	res, err := api.client.Do(r)
+	if res.StatusCode != 422 {
+		return fmt.Errorf("unexpected status %d", res.StatusCode)
+	}
+	logger.Debug(">>>> Error", "error", err)
 	if err != nil && errors.As(err, &axiErr) {
-		if axiErr.Status == 400 {
-			// expected 400 for empty query, HEALTHY
+		if axiErr.Status == 422 {
+			// expected 422 for empty query, HEALTHY
 			return nil
 		}
 	}

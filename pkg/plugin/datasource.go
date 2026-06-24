@@ -271,20 +271,21 @@ func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRe
 	// }
 
 	// perform an APL query that we expect to fail (empty)
-	// validate that we get HTTP 400, this gives high confidence
+	// validate that we get HTTP 422, this gives high confidence
 	// that we got past network and authentication issues and looked at our request
 	// it also should be somewhat inexpensive for the server
 	// var msg = "Did not receive expected error"
-	err := d.api.CheckHealth(ctx)
+	err := d.api.ValidateCredentials(ctx)
 	if err != nil {
 		return &backend.CheckHealthResult{
-			Status:  backend.HealthStatusError,
-			Message: err.Error(),
+			Status:      backend.HealthStatusError,
+			Message:     fmt.Sprintf("Failed to validate configuration: %s", err.Error()),
+			JSONDetails: []byte(`{"error": "` + err.Error() + `"}`),
 		}, nil
 	}
+
 	return &backend.CheckHealthResult{
 		Status:  backend.HealthStatusOk,
-		Message: "OK",
+		Message: "Configuration is valid and ready to use",
 	}, nil
-
 }
