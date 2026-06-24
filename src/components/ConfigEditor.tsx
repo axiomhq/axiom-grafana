@@ -138,7 +138,7 @@ export function ConfigEditor(props: Props) {
         <Label description="The Axiom API host for management operations (schema lookup, health checks).">
           <h6>Axiom API Host</h6>
         </Label>
-        <InlineField label="URL" labelWidth={17}>
+        <InlineField label="API URL" labelWidth={17}>
           <Input
             onChange={onHostChange}
             value={jsonData.apiHost || 'https://api.axiom.co'}
@@ -148,14 +148,14 @@ export function ConfigEditor(props: Props) {
         </InlineField>
       </div>
       <div>
-        <Label description="Optional edge configuration for data locality.">
-          <h6>Edge (Optional)</h6>
+        <Label description="Edge configuration for data locality." style={{ marginTop: '16px' }}>
+          <h6>Axiom Edge</h6>
         </Label>
-        <InlineField label="Edge URL" labelWidth={17} tooltip="Explicit edge URL. If a path is provided, it is used as-is.">
+        <InlineField label="Edge URL" labelWidth={17} tooltip="Explicit edge URL for data locality.">
           <Input
             onChange={onEdgeURLChange}
             value={jsonData.edgeURL || (jsonData.edge ? legacyEdgeToEdgeURL(jsonData.edge) : '')}
-            placeholder="e.g., https://custom-edge.example.com"
+            placeholder="e.g: https://us-east-1.aws.edge.axiom.co"
             width={40}
           />
         </InlineField>
@@ -169,8 +169,9 @@ export function isValid(settings: AxiomDataSourceOptions): boolean {
     return false;
   }
 
+  const edgeURL = settings.edgeURL || (settings.edge ? legacyEdgeToEdgeURL(settings.edge) : '');
   const { apiHost } = settings;
-  if (!apiHost) {
+  if (!apiHost || !edgeURL.trim()) {
     return false;
   }
 

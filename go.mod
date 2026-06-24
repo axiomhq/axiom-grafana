@@ -1,6 +1,6 @@
 module github.com/axiomhq/axiom-grafana
 
-go 1.26.3
+go 1.26.4
 
 require (
 	github.com/axiomhq/axiom-go v0.29.0

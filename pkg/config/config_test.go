@@ -16,11 +16,12 @@ func TestResolveBaseURL(t *testing.T) {
 		edge     string
 		edgeURL  string
 		expected string
+		err      string
 	}{
 		{
-			name:     "no edge - uses apiHost",
-			apiHost:  "https://api.axiom.co",
-			expected: "https://api.axiom.co",
+			name:    "no edge - returns error",
+			apiHost: "https://api.axiom.co",
+			err:     "Edge URL is required. Please configure the Edge URL in the Axiom Grafana datasource settings.",
 		},
 		{
 			name:     "edge domain",
@@ -58,9 +59,9 @@ func TestResolveBaseURL(t *testing.T) {
 			expected: "https://primary.edge.axiom.co",
 		},
 		{
-			name:     "legacy EU instance - no edge",
-			apiHost:  "https://api.eu.axiom.co",
-			expected: "https://api.eu.axiom.co",
+			name:    "legacy EU instance - no edge returns error",
+			apiHost: "https://api.eu.axiom.co",
+			err:     "Edge URL is required. Please configure the Edge URL in the Axiom Grafana datasource settings.",
 		},
 		{
 			name:     "staging edge domain",
@@ -68,15 +69,20 @@ func TestResolveBaseURL(t *testing.T) {
 			expected: "https://us-east-1.edge.staging.axiomdomain.co",
 		},
 		{
-			name:     "no apiHost, no edge - uses default cloud endpoint",
-			expected: "https://api.axiom.co",
+			name: "no apiHost, no edge - returns error",
+			err:  "Edge URL is required. Please configure the Edge URL in the Axiom Grafana datasource settings.",
 		},
 	}
 
 	for _, test := range tests {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
-			endpoint, err := resolveEdgeUrl(test.apiHost, test.edge, test.edgeURL)
+			endpoint, err := resolveEdgeUrl(test.edge, test.edgeURL)
+			if test.err != "" {
+				require.EqualError(t, err, test.err)
+				require.Empty(t, endpoint)
+				return
+			}
 			require.NoError(t, err)
 			require.Equal(t, test.expected, endpoint)
 		})
@@ -110,4 +116,17 @@ func TestParseConfigFallsBackToLegacyEdgeDomain(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, "https://eu-central-1.aws.edge.axiom.co", cfg.EdgeURL)
+}
+
+func TestParseConfigRequiresEdgeURL(t *testing.T) {
+	settings := backend.DataSourceInstanceSettings{
+		JSONData: json.RawMessage(`{
+			"apiHost": "https://api.axiom.co"
+		}`),
+	}
+
+	cfg, err := ParseConfig(context.Background(), settings)
+
+	require.Nil(t, cfg)
+	require.EqualError(t, err, "Edge URL is required. Please configure the Edge URL in the Axiom Grafana datasource settings.")
 }
