@@ -391,18 +391,15 @@ func (api *Client) ValidateCredentials(ctx context.Context) error {
 	logger := log.DefaultLogger.FromContext(ctx)
 
 	var axiErr axiom.HTTPError
-	logger.Debug(">>>> Checking health", "edgeURL", api.edgeURL)
 	path, err := url.JoinPath(api.edgeURL, "/v1/query/_apl")
 	if err != nil {
 		return err
 	}
-	logger.Debug(">>>> Path", "path", path)
 	r, err := api.NewRequest(ctx, http.MethodPost, path, nil)
 	res, err := api.client.Do(r)
 	if res.StatusCode != 422 {
 		return fmt.Errorf("unexpected status %d", res.StatusCode)
 	}
-	logger.Debug(">>>> Error", "error", err)
 	if err != nil && errors.As(err, &axiErr) {
 		if axiErr.Status == 422 {
 			// expected 422 for empty query, HEALTHY

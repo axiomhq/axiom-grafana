@@ -21,7 +21,7 @@ func TestResolveBaseURL(t *testing.T) {
 		{
 			name:    "no edge - returns error",
 			apiHost: "https://api.axiom.co",
-			err:     "edge URL is required",
+			err:     "Edge URL is required. Please configure the Edge URL in the Axiom Grafana datasource settings.",
 		},
 		{
 			name:     "edge domain",
@@ -61,7 +61,7 @@ func TestResolveBaseURL(t *testing.T) {
 		{
 			name:    "legacy EU instance - no edge returns error",
 			apiHost: "https://api.eu.axiom.co",
-			err:     "edge URL is required",
+			err:     "Edge URL is required. Please configure the Edge URL in the Axiom Grafana datasource settings.",
 		},
 		{
 			name:     "staging edge domain",
@@ -70,7 +70,7 @@ func TestResolveBaseURL(t *testing.T) {
 		},
 		{
 			name: "no apiHost, no edge - returns error",
-			err:  "edge URL is required",
+			err:  "Edge URL is required. Please configure the Edge URL in the Axiom Grafana datasource settings.",
 		},
 	}
 
@@ -128,5 +128,5 @@ func TestParseConfigRequiresEdgeURL(t *testing.T) {
 	cfg, err := ParseConfig(context.Background(), settings)
 
 	require.Nil(t, cfg)
-	require.EqualError(t, err, "edge URL is required")
+	require.EqualError(t, err, "Edge URL is required. Please configure the Edge URL in the Axiom Grafana datasource settings.")
 }
