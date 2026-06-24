@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.7.0
+
+- Add support for MPL queries in panels and variables, including the MPL editor, metric selectors, tag lookup resources, and chart-width forwarding.
+- Migrate queries to the v2 query model with explicit `kind` and `query` fields while preserving runtime migration for legacy saved APL queries.
+- Return Grafana-native frames for APL time series, logs, traces, generic tables, and logs-volume results.
+- Improve metric series display names with tag-derived labels and `__label` legend overrides.
+- Upgrade Grafana frontend dependencies and plugin SDK support for newer Grafana versions and React 19.
+- Fix edge URL handling and datasource credentials validation.
+- Fix provisioned dashboard query shape, APL/MPL variable query editing, Kusto/MPL editor initialization, empty-query execution, and trace/log frame normalization.
+
+### Breaking changes
+
+- Personal tokens are no longer allowed; datasource authentication now requires API tokens.
+- `Edge URL` is now required in the plugin config and is used for all query operations.
+
+## 0.6.4
+
+- Add support for regional edge query endpoints and explicit edge URLs.
+- Add smart edge URL path handling for custom query endpoints.
+- Bump `axiom-go` to v0.29.0, including support for `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment variables.
+- Upgrade the Grafana Go SDK.
+- Update release automation for the current Grafana plugin build, signing, and attestation flow.
+
 ## 0.6.3
 
 - Update Grafana plugin SDK to v12
