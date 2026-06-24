@@ -54,7 +54,7 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
 
         return {
           ...migratedQuery,
-          includeTotalsTableFrame: includeTotalsTableFrame && migratedQuery.kind !== 'mpl' && !migratedQuery.totals,
+          includeTotalsTableFrame: includeTotalsTableFrame && !migratedQuery.totals,
           includeLogsVolumeFrame: includeLogsVolumeFrame && migratedQuery.kind !== 'mpl' && !migratedQuery.totals,
         };
       }),

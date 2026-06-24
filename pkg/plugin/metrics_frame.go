@@ -16,6 +16,11 @@ type metricsFrameBuilder struct {
 	refID    string
 }
 
+type metricsTableRow struct {
+	tags   map[string]string
+	values map[string]*float64
+}
+
 func newMetricsFrameBuilder(metadata axiomapi.MetricsQueryMetadata, refID string) metricsFrameBuilder {
 	return metricsFrameBuilder{
 		metadata: metadata,
@@ -39,8 +44,9 @@ func (b metricsFrameBuilder) Build(group axiomapi.MetricsQuerySeries) *data.Fram
 	frame := data.NewFrame(frameName)
 	frame.RefID = b.refID
 	frame.Meta = &data.FrameMeta{
-		Type:        data.FrameTypeTimeSeriesMulti,
-		TypeVersion: data.FrameTypeVersion{0, 1},
+		Type:                   data.FrameTypeTimeSeriesMulti,
+		TypeVersion:            data.FrameTypeVersion{0, 1},
+		PreferredVisualization: data.VisTypeGraph,
 		// TODO: fix notices
 		// Notices: []data.Notice{res.Metadata.Warnings},
 	}
@@ -60,6 +66,138 @@ func (b metricsFrameBuilder) Build(group axiomapi.MetricsQuerySeries) *data.Fram
 	}
 
 	return frame
+}
+
+func (b metricsFrameBuilder) BuildTable(series []axiomapi.MetricsQuerySeries) *data.Frame {
+	frame := data.NewFrame("metrics")
+	frame.RefID = b.refID
+	frame.Meta = &data.FrameMeta{
+		PreferredVisualization: data.VisTypeTable,
+	}
+
+	if len(series) == 0 {
+		return frame
+	}
+
+	includeLabelColumn := false
+	tagColumns := make([]string, 0)
+	tagColumnSeen := map[string]struct{}{}
+	metricColumns := make([]string, 0)
+	metricColumnSeen := map[string]struct{}{}
+	for _, group := range series {
+		if _, ok := group.Tags[metricsDisplayLabelTag]; ok {
+			includeLabelColumn = true
+		}
+		for tag := range group.Tags {
+			if tag == metricsDisplayLabelTag {
+				continue
+			}
+			if _, ok := tagColumnSeen[tag]; ok {
+				continue
+			}
+			tagColumnSeen[tag] = struct{}{}
+			tagColumns = append(tagColumns, tag)
+		}
+
+		metric := metricsTableMetricName(group)
+		if _, ok := metricColumnSeen[metric]; ok {
+			continue
+		}
+		metricColumnSeen[metric] = struct{}{}
+		metricColumns = append(metricColumns, metric)
+	}
+	sort.Strings(tagColumns)
+
+	rowsByKey := map[string]*metricsTableRow{}
+	rowKeys := make([]string, 0)
+	for _, group := range series {
+		key := metricsTableRowKey(group)
+		row, ok := rowsByKey[key]
+		if !ok {
+			row = &metricsTableRow{
+				tags:   group.Tags,
+				values: map[string]*float64{},
+			}
+			rowsByKey[key] = row
+			rowKeys = append(rowKeys, key)
+		}
+
+		row.values[metricsTableMetricName(group)] = latestMetricsValue(group.Data)
+	}
+
+	if includeLabelColumn {
+		labelField := data.NewField(metricsDisplayLabelTag, nil, []*string{})
+		for _, key := range rowKeys {
+			appendMetricsTableStringValue(labelField, rowsByKey[key].tags, metricsDisplayLabelTag)
+		}
+		frame.Fields = append(frame.Fields, labelField)
+	}
+
+	for _, tag := range tagColumns {
+		field := data.NewField(tag, nil, []*string{})
+		for _, key := range rowKeys {
+			appendMetricsTableStringValue(field, rowsByKey[key].tags, tag)
+		}
+		frame.Fields = append(frame.Fields, field)
+	}
+
+	for _, metric := range metricColumns {
+		field := data.NewField(metric, nil, []*float64{})
+		applyMetricsFieldMetadata(field, b.metadata)
+		for _, key := range rowKeys {
+			field.Append(rowsByKey[key].values[metric])
+		}
+		frame.Fields = append(frame.Fields, field)
+	}
+
+	return frame
+}
+
+func metricsTableMetricName(group axiomapi.MetricsQuerySeries) string {
+	if group.Metric == "" {
+		return "value"
+	}
+
+	return group.Metric
+}
+
+func metricsTableRowKey(group axiomapi.MetricsQuerySeries) string {
+	if len(group.Tags) == 0 {
+		return ""
+	}
+
+	keys := make([]string, 0, len(group.Tags))
+	for key := range group.Tags {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, key+"\x00"+group.Tags[key])
+	}
+
+	return strings.Join(parts, "\x01")
+}
+
+func appendMetricsTableStringValue(field *data.Field, tags map[string]string, tag string) {
+	value, ok := tags[tag]
+	if !ok {
+		field.Append(nil)
+		return
+	}
+
+	field.Append(&value)
+}
+
+func latestMetricsValue(values []*float64) *float64 {
+	for i := len(values) - 1; i >= 0; i-- {
+		if values[i] != nil {
+			return values[i]
+		}
+	}
+
+	return nil
 }
 
 func metricsSeriesFieldName(metric string, tags map[string]string) string {
