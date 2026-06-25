@@ -55,15 +55,23 @@ func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSetti
 		logger.Error("Failed to parse config", "error", err.Error())
 		return nil, err
 	}
-	api := axiomapi.NewClient(config)
 
-	ds := &Datasource{
+	opts, err := settings.HTTPClientOptions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	api, err := axiomapi.NewClient(opts, config)
+	if err != nil {
+		return nil, err
+	}
+
+	ds := Datasource{
 		api: api,
 	}
 	resourceHandler := ds.newResourceHandler()
 	ds.CallResourceHandler = resourceHandler
 
-	return ds, nil
+	return &ds, nil
 }
 
 // Dispose here tells plugin SDK that plugin wants to clean up resources when a new instance
@@ -259,22 +267,6 @@ func (d *Datasource) queryMetrics(ctx context.Context, q *queryModel, refID stri
 // datasource configuration page which allows users to verify that
 // a datasource is working as expected.
 func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
-	// first try to validate the credentials
-	// err := d.client.ValidateCredentials(ctx)
-	// if err != nil {
-	// 	logger.Error("Failed to validate credentials", "error", err)
-	// 	return &backend.CheckHealthResult{
-	// 		Status: backend.HealthStatusError,
-	// 		// simple error message, not the actual error
-	// 		Message: "error with datasource",
-	// 	}, nil
-	// }
-
-	// perform an APL query that we expect to fail (empty)
-	// validate that we get HTTP 422, this gives high confidence
-	// that we got past network and authentication issues and looked at our request
-	// it also should be somewhat inexpensive for the server
-	// var msg = "Did not receive expected error"
 	err := d.api.ValidateCredentials(ctx)
 	if err != nil {
 		return &backend.CheckHealthResult{

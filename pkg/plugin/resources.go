@@ -46,8 +46,6 @@ func (d *Datasource) HandleMetricsDatasets(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	logger.Debug("######", "ds", datasets)
-
 	writeJSON(w, logger, datasets)
 }
 
