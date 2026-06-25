@@ -254,13 +254,6 @@ func (aplTableFrameBuilder) Build(ctx context.Context, result *axiQuery.Table, o
 		f := f
 		i := i
 		fieldType := f.Type
-		var sampleValue any
-		sampleRow := -1
-		columnLen := 0
-		if i < len(result.Columns) {
-			columnLen = len(result.Columns[i])
-			sampleValue, sampleRow, _ = firstDebugValue(result.Columns[i])
-		}
 		if f.Name == "_time" {
 			fieldType = "datetime"
 		} else if fieldType == "unknown" && i < len(result.Columns) {
@@ -268,47 +261,25 @@ func (aplTableFrameBuilder) Build(ctx context.Context, result *axiQuery.Table, o
 			logger.Debug("inferred unknown APL field type", "field", f.Name, "type", fieldType)
 		}
 
-		var field *data.Field
-		func() {
-			var fieldValues any
-			defer func() {
-				if r := recover(); r != nil {
-					logger.Error(
-						"panic creating APL data frame field",
-						"field", f.Name,
-						"fieldIndex", i,
-						"declaredType", f.Type,
-						"resolvedType", fieldType,
-						"columnLength", columnLen,
-						"sampleRow", sampleRow,
-						"sampleValueType", debugValueType(sampleValue),
-						"sampleValue", debugValuePreview(sampleValue),
-						"fieldValuesType", debugValueType(fieldValues),
-						"panic", fmt.Sprintf("%v", r),
-					)
-					panic(r)
-				}
-			}()
+		var fieldValues any
+		switch fieldType {
+		case "datetime":
+			fieldValues = []*time.Time{}
+		case "integer":
+			fieldValues = []*float64{}
+		case "float":
+			fieldValues = []*float64{}
+		case "bool":
+			fieldValues = []*bool{}
+		case "timespan":
+			fieldValues = []*string{}
+		case "array":
+			fieldValues = []*string{}
+		default:
+			fieldValues = []*string{}
+		}
 
-			switch fieldType {
-			case "datetime":
-				fieldValues = []*time.Time{}
-			case "integer":
-				fieldValues = []*float64{}
-			case "float":
-				fieldValues = []*float64{}
-			case "bool":
-				fieldValues = []*bool{}
-			case "timespan":
-				fieldValues = []*string{}
-			case "array":
-				fieldValues = []*string{}
-			default:
-				fieldValues = []*string{}
-			}
-
-			field = data.NewField(f.Name, nil, fieldValues)
-		}()
+		field := data.NewField(f.Name, nil, fieldValues)
 		applyAPLFieldMetadata(field, f, opts.FieldMetaByName)
 
 		fields = append(fields, field)
@@ -321,101 +292,79 @@ func (aplTableFrameBuilder) Build(ctx context.Context, result *axiQuery.Table, o
 		}
 
 		for i := 0; i < len(col); i++ {
-			colIndex := colIndex
-			i := i
-
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						logger.Error(
-							"panic appending APL data frame value",
-							"field", result.Fields[colIndex].Name,
-							"fieldIndex", colIndex,
-							"rowIndex", i,
-							"declaredType", result.Fields[colIndex].Type,
-							"resolvedType", fieldTypes[colIndex],
-							"valueType", debugValueType(col[i]),
-							"value", debugValuePreview(col[i]),
-							"panic", fmt.Sprintf("%v", r),
-						)
-						panic(r)
-					}
-				}()
-
-				switch fieldTypes[colIndex] {
-				case "datetime":
-					if col[i] == nil {
-						fields[colIndex].Append(nil)
-						return
-					}
-
-					timestamp, ok := col[i].(time.Time)
-					if ok {
-						fields[colIndex].Append(&timestamp)
-						return
-					}
-
-					t, err := time.Parse(time.RFC3339Nano, col[i].(string))
-					if err != nil {
-						logger.Warn("Failed to parse time", "time", col[i])
-						fields[colIndex].Append(nil)
-						return
-					}
-					fields[colIndex].Append(&t)
-				case "integer":
-					if col[i] == nil {
-						fields[colIndex].Append(nil)
-						return
-					}
-					num := col[i].(float64)
-					fields[colIndex].Append(&num)
-				case "float":
-					if col[i] == nil {
-						fields[colIndex].Append(nil)
-						return
-					}
-					num := col[i].(float64)
-					fields[colIndex].Append(&num)
-				case "string", "unknown":
-					if col[i] == nil {
-						fields[colIndex].Append(nil)
-						return
-					}
-					txt, ok := col[i].(string)
-					if !ok {
-						txt = stringifyFrameValue(col[i])
-					}
-					fields[colIndex].Append(&txt)
-				case "bool":
-					if col[i] == nil {
-						fields[colIndex].Append(nil)
-						return
-					}
-					b := col[i].(bool)
-					fields[colIndex].Append(&b)
-				case "timespan":
-					if col[i] == nil {
-						fields[colIndex].Append(nil)
-						return
-					}
-					num := col[i].(string)
-					fields[colIndex].Append(&num)
-				case "array":
-					if col[i] == nil {
-						fields[colIndex].Append(nil)
-						return
-					}
-					txt := stringifyFrameValue(col[i])
-					fields[colIndex].Append(&txt)
-				default:
-					if col[i] == nil {
-						fields[colIndex].Append(nil)
-						return
-					}
-					txt := stringifyFrameValue(col[i])
-					fields[colIndex].Append(&txt)
+			switch fieldTypes[colIndex] {
+			case "datetime":
+				if col[i] == nil {
+					fields[colIndex].Append(nil)
+					continue
 				}
-			}()
+
+				timestamp, ok := col[i].(time.Time)
+				if ok {
+					fields[colIndex].Append(&timestamp)
+					continue
+				}
+
+				t, err := time.Parse(time.RFC3339Nano, col[i].(string))
+				if err != nil {
+					logger.Warn("Failed to parse time", "time", col[i])
+					fields[colIndex].Append(nil)
+					continue
+				}
+				fields[colIndex].Append(&t)
+			case "integer":
+				if col[i] == nil {
+					fields[colIndex].Append(nil)
+					continue
+				}
+				num := col[i].(float64)
+				fields[colIndex].Append(&num)
+			case "float":
+				if col[i] == nil {
+					fields[colIndex].Append(nil)
+					continue
+				}
+				num := col[i].(float64)
+				fields[colIndex].Append(&num)
+			case "string", "unknown":
+				if col[i] == nil {
+					fields[colIndex].Append(nil)
+					continue
+				}
+				txt, ok := col[i].(string)
+				if !ok {
+					txt = stringifyFrameValue(col[i])
+				}
+				fields[colIndex].Append(&txt)
+			case "bool":
+				if col[i] == nil {
+					fields[colIndex].Append(nil)
+					continue
+				}
+				b := col[i].(bool)
+				fields[colIndex].Append(&b)
+			case "timespan":
+				if col[i] == nil {
+					fields[colIndex].Append(nil)
+					continue
+				}
+				num := col[i].(string)
+				fields[colIndex].Append(&num)
+			case "array":
+				if col[i] == nil {
+					fields[colIndex].Append(nil)
+					continue
+				}
+				txt := stringifyFrameValue(col[i])
+				fields[colIndex].Append(&txt)
+			default:
+				if col[i] == nil {
+					fields[colIndex].Append(nil)
+					continue
+				}
+				txt := stringifyFrameValue(col[i])
+				fields[colIndex].Append(&txt)
+			}
 		}
 	}
 	frame.Fields = fields

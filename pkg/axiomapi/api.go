@@ -16,14 +16,14 @@ import (
 	"github.com/axiomhq/axiom-go/axiom/query"
 	"github.com/axiomhq/axiom-grafana/pkg/config"
 	"github.com/axiomhq/axiom-grafana/pkg/version"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/httpclient"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
 
 type Client struct {
-	apiURL    string
-	edgeURL   string
-	userAgent string
-	client    http.Client
+	apiURL  string
+	edgeURL string
+	client  *http.Client
 }
 
 type Dataset struct {
@@ -112,21 +112,32 @@ type MetricsQuerySeries struct {
 	Metric     string
 }
 
-func NewClient(c *config.PluginConfig) *Client {
-	client := http.Client{
-		Transport: authTransport{
-			base:  http.DefaultTransport,
-			token: c.AccessToken,
-		},
-		Timeout: 5 * time.Minute,
+func NewClient(opts httpclient.Options, c *config.PluginConfig) (*Client, error) {
+	if opts.Header == nil {
+		opts.Header = http.Header{}
+	}
+	if c.AccessToken != "" {
+		opts.Header.Set("Authorization", "Bearer "+c.AccessToken)
+	}
+	// set the SDK identifier
+	opts.Header.Set("User-Agent", fmt.Sprintf("axiom-grafana/v%s", version.Version))
+	// increase timeout for metrics queries
+	if opts.Timeouts == nil {
+		timeouts := httpclient.DefaultTimeoutOptions
+		opts.Timeouts = &timeouts
+	}
+	opts.Timeouts.Timeout = 5 * time.Minute
+
+	client, err := httpclient.New(opts)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Client{
-		apiURL:    c.APIHost,
-		edgeURL:   c.EdgeURL,
-		userAgent: fmt.Sprintf("axiom-grafana/v%s", version.Version),
-		client:    client,
-	}
+		apiURL:  c.APIHost,
+		edgeURL: c.EdgeURL,
+		client:  client,
+	}, nil
 }
 
 func (api *Client) DatasetFields(ctx context.Context) ([]*DatasetFields, error) {
@@ -182,14 +193,10 @@ func (api *Client) FetchMetricsDataset(ctx context.Context) ([]string, error) {
 	datasets := []string{}
 
 	for _, ds := range res {
-		logger.Debug(">>>>>", "kind", ds.Kind)
-
 		if ds.Kind == "otel:metrics:v1" {
 			datasets = append(datasets, ds.Name)
 		}
 	}
-
-	logger.Debug(">>>>>", "datasets", datasets)
 
 	return datasets, nil
 }
@@ -352,8 +359,8 @@ func (api *Client) NewRequest(ctx context.Context, method, path string, body any
 	if body != nil && req.Header.Get("Content-Type") == "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if api.userAgent != "" {
-		req.Header.Set("User-Agent", api.userAgent)
+	if req.Header.Get("Accept") == "" {
+		req.Header.Set("Accept", "application/json")
 	}
 
 	return req, nil
@@ -396,20 +403,28 @@ func (api *Client) ValidateCredentials(ctx context.Context) error {
 		return err
 	}
 	r, err := api.NewRequest(ctx, http.MethodPost, path, nil)
-	res, err := api.client.Do(r)
-	if res.StatusCode != 422 {
-		return fmt.Errorf("unexpected status %d", res.StatusCode)
+	if err != nil {
+		return err
 	}
+	res, err := api.client.Do(r)
 	if err != nil && errors.As(err, &axiErr) {
 		if axiErr.Status == 422 {
 			// expected 422 for empty query, HEALTHY
 			return nil
 		}
 	}
-
 	if err != nil {
-		logger.Error("Failed to query Axiom", "error", err)
+		logger.Error("failed to query Axiom", "error", err.Error())
+		return fmt.Errorf("invalid edge url or API token")
+	}
+	if res == nil {
+		return fmt.Errorf("no response received from %s", api.edgeURL)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != 422 {
+		return fmt.Errorf("unexpected status %d", res.StatusCode)
 	}
 
-	return err
+	return nil
 }

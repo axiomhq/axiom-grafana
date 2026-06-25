@@ -34,7 +34,9 @@ func ParseConfig(ctx context.Context, settings backend.DataSourceInstanceSetting
 	}
 	host := "https://api.axiom.co"
 	if apiHost, exists := data["apiHost"]; exists {
-		host = apiHost.(string)
+		if s, ok := apiHost.(string); ok {
+			host = s
+		}
 	}
 
 	edge := util.CheckString(data["edge"])

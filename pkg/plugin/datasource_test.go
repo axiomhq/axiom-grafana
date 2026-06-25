@@ -12,6 +12,7 @@ import (
 	"github.com/axiomhq/axiom-go/axiom/query"
 	"github.com/axiomhq/axiom-grafana/pkg/axiomapi"
 	"github.com/axiomhq/axiom-grafana/pkg/config"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/httpclient"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 	"github.com/stretchr/testify/require"
 
@@ -49,10 +50,7 @@ func TestQueryDataSkipsEmptyQueries(t *testing.T) {
 	defer upstream.Close()
 
 	ds := Datasource{
-		api: axiomapi.NewClient(&config.PluginConfig{
-			APIHost: upstream.URL,
-			EdgeURL: upstream.URL,
-		}),
+		api: newTestAxiomClient(t, upstream.URL, upstream.URL),
 	}
 
 	resp, err := ds.QueryData(
@@ -106,10 +104,7 @@ func TestResourceHandlerFetchesEscapedMetricAutocompleteValues(t *testing.T) {
 	defer upstream.Close()
 
 	ds := Datasource{
-		api: axiomapi.NewClient(&config.PluginConfig{
-			APIHost: upstream.URL,
-			EdgeURL: upstream.URL,
-		}),
+		api: newTestAxiomClient(t, upstream.URL, upstream.URL),
 	}
 	handler := ds.newResourceHandler()
 
@@ -202,10 +197,7 @@ func TestQueryLogsVolumeReturnsFullRangeHistogramFrame(t *testing.T) {
 
 	queryText := "['logs'] | where level == 'error'"
 	ds := Datasource{
-		api: axiomapi.NewClient(&config.PluginConfig{
-			APIHost: upstream.URL,
-			EdgeURL: upstream.URL,
-		}),
+		api: newTestAxiomClient(t, upstream.URL, upstream.URL),
 	}
 
 	resp, err := ds.queryLogsVolume(
@@ -266,10 +258,7 @@ func TestMPLQuerySendsChartWidthHeader(t *testing.T) {
 	defer upstream.Close()
 
 	ds := Datasource{
-		api: axiomapi.NewClient(&config.PluginConfig{
-			APIHost: upstream.URL,
-			EdgeURL: upstream.URL,
-		}),
+		api: newTestAxiomClient(t, upstream.URL, upstream.URL),
 	}
 
 	resp, err := ds.QueryData(
@@ -311,10 +300,7 @@ func TestMPLQueryReturnsExploreTableFrameWhenRequested(t *testing.T) {
 	defer upstream.Close()
 
 	ds := Datasource{
-		api: axiomapi.NewClient(&config.PluginConfig{
-			APIHost: upstream.URL,
-			EdgeURL: upstream.URL,
-		}),
+		api: newTestAxiomClient(t, upstream.URL, upstream.URL),
 	}
 
 	resp, err := ds.QueryData(
@@ -401,10 +387,7 @@ func TestQueryEventsPrependsLogsVolumeFrameForPanelLogQueries(t *testing.T) {
 
 	queryText := "['logs']"
 	ds := Datasource{
-		api: axiomapi.NewClient(&config.PluginConfig{
-			APIHost: upstream.URL,
-			EdgeURL: upstream.URL,
-		}),
+		api: newTestAxiomClient(t, upstream.URL, upstream.URL),
 	}
 
 	resp, err := ds.queryEvents(
@@ -457,6 +440,22 @@ func callResource(t *testing.T, handler backend.CallResourceHandler, path string
 	require.NotNil(t, resp)
 
 	return resp
+}
+
+func newTestAxiomClient(t *testing.T, apiHost, edgeURL string) *axiomapi.Client {
+	t.Helper()
+
+	timeouts := httpclient.DefaultTimeoutOptions
+	client, err := axiomapi.NewClient(
+		httpclient.Options{Timeouts: &timeouts},
+		&config.PluginConfig{
+			APIHost: apiHost,
+			EdgeURL: edgeURL,
+		},
+	)
+	require.NoError(t, err)
+
+	return client
 }
 
 func TestBuildFrame(t *testing.T) {
