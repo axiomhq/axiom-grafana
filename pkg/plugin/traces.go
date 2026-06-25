@@ -144,14 +144,14 @@ func buildTraceFrame(ctx context.Context, result *axiQuery.Table) (*data.Frame, 
 
 		startTime, ok := traceStartTimeMillis(traceColumnValue(result, columns, "startTime", row), columns["startTime"].name)
 		if !ok {
-			logger.Warn("failed to parse trace start time", "row", row, "value", debugValuePreview(traceColumnValue(result, columns, "startTime", row)))
+			logger.Warn("failed to parse trace start time", "row", row, "value", traceColumnValue(result, columns, "startTime", row))
 			startTime = 0
 		}
 		startTimeField.Append(&startTime)
 
 		duration, ok := traceDurationMillis(traceColumnValue(result, columns, "duration", row), columns["duration"].name)
 		if !ok {
-			logger.Warn("failed to parse trace duration", "row", row, "value", debugValuePreview(traceColumnValue(result, columns, "duration", row)))
+			logger.Warn("failed to parse trace duration", "row", row, "value", traceColumnValue(result, columns, "duration", row))
 			duration = 0
 		}
 		durationField.Append(&duration)
