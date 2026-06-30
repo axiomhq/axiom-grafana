@@ -19,9 +19,9 @@ func TestResolveBaseURL(t *testing.T) {
 		err      string
 	}{
 		{
-			name:    "no edge - returns error",
-			apiHost: "https://api.axiom.co",
-			err:     "Edge URL is required. Please configure the Edge URL in the Axiom Grafana datasource settings.",
+			name:     "no edge - defaults to us east edge",
+			apiHost:  "https://api.axiom.co",
+			expected: "https://us-east-1.aws.edge.axiom.co",
 		},
 		{
 			name:     "edge domain",
@@ -59,9 +59,9 @@ func TestResolveBaseURL(t *testing.T) {
 			expected: "https://primary.edge.axiom.co",
 		},
 		{
-			name:    "legacy EU instance - no edge returns error",
-			apiHost: "https://api.eu.axiom.co",
-			err:     "Edge URL is required. Please configure the Edge URL in the Axiom Grafana datasource settings.",
+			name:     "legacy EU instance - no edge defaults to us east edge",
+			apiHost:  "https://api.eu.axiom.co",
+			expected: "https://us-east-1.aws.edge.axiom.co",
 		},
 		{
 			name:     "staging edge domain",
@@ -69,8 +69,8 @@ func TestResolveBaseURL(t *testing.T) {
 			expected: "https://us-east-1.edge.staging.axiomdomain.co",
 		},
 		{
-			name: "no apiHost, no edge - returns error",
-			err:  "Edge URL is required. Please configure the Edge URL in the Axiom Grafana datasource settings.",
+			name:     "no apiHost, no edge - defaults to us east edge",
+			expected: "https://us-east-1.aws.edge.axiom.co",
 		},
 	}
 
@@ -118,7 +118,7 @@ func TestParseConfigFallsBackToLegacyEdgeDomain(t *testing.T) {
 	require.Equal(t, "https://eu-central-1.aws.edge.axiom.co", cfg.EdgeURL)
 }
 
-func TestParseConfigRequiresEdgeURL(t *testing.T) {
+func TestParseConfigDefaultsEdgeURL(t *testing.T) {
 	settings := backend.DataSourceInstanceSettings{
 		JSONData: json.RawMessage(`{
 			"apiHost": "https://api.axiom.co"
@@ -127,6 +127,6 @@ func TestParseConfigRequiresEdgeURL(t *testing.T) {
 
 	cfg, err := ParseConfig(context.Background(), settings)
 
-	require.Nil(t, cfg)
-	require.EqualError(t, err, "Edge URL is required. Please configure the Edge URL in the Axiom Grafana datasource settings.")
+	require.NoError(t, err)
+	require.Equal(t, "https://us-east-1.aws.edge.axiom.co", cfg.EdgeURL)
 }
