@@ -23,9 +23,7 @@ export function ConfigEditor(props: Props) {
   const { onOptionsChange, options } = props;
   const jsonData = useMemo(() => (options.jsonData || {}) as AxiomDataSourceOptions, [options.jsonData]);
   const secureJsonData = (options.secureJsonData || {}) as MySecureJsonData;
-  const [shouldShowOrgId, setShowOrgId] = useState(
-    !!options.jsonData.orgID && options.secureJsonData?.accessToken.startsWith('xapt-')
-  );
+  const [isPersonalToken, setIsPersonalToken] = useState(options.secureJsonData?.accessToken.startsWith('xapt-'));
 
   useEffect(() => {
     const migratedEdgeURL = jsonData.edgeURL || (jsonData.edge ? legacyEdgeToEdgeURL(jsonData.edge) : '');
@@ -64,9 +62,10 @@ export function ConfigEditor(props: Props) {
   // Secure field (only sent to the backend)
   const onAccessTokenChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.value.startsWith('xapt-')) {
-      setShowOrgId(true);
+      setIsPersonalToken(true);
+      return;
     } else {
-      setShowOrgId(false);
+      setIsPersonalToken(false);
     }
 
     onOptionsChange({
@@ -91,14 +90,6 @@ export function ConfigEditor(props: Props) {
     });
   };
 
-  const onOrgIDChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const jsonData = {
-      ...options.jsonData,
-      orgID: event.target.value,
-    };
-    onOptionsChange({ ...options, jsonData });
-  };
-
   const { secureJsonFields } = options;
   return (
     <div className="gf-form-group">
@@ -116,21 +107,15 @@ export function ConfigEditor(props: Props) {
         />
       </InlineField>
       <br />
-      {/* Only show orgId for users who have already set it. Promote advanced tokens instead */}
-      {shouldShowOrgId && (
-        <InlineField label="Org ID" labelWidth={17}>
-          <Input value={jsonData.orgID || ''} placeholder="" width={40} onChange={onOrgIDChange} />
-        </InlineField>
-      )}
-      {/* If orgId is set, show a deprecation message */}
-      {shouldShowOrgId && (
+      {/* If personal token is used, show an error message */}
+      {isPersonalToken && (
         <div>
           <Alert
-            title="Personal tokens are deprecated and will be removed in the next release. Please switch to advanced API tokens."
+            title="Personal tokens are deprecated. Please switch to advanced API tokens."
             about="Token"
-            severity="warning"
+            severity="error"
             buttonContent="Learn more"
-            topSpacing={4}
+            topSpacing={0}
           />
         </div>
       )}

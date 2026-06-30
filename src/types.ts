@@ -33,7 +33,6 @@ export const DEFAULT_QUERY: Partial<AxiomQuery> = {
  */
 export interface AxiomDataSourceOptions extends DataSourceJsonData {
   apiHost: string;
-  orgID: string;
   /**
    * Legacy regional edge domain for ingest and query operations.
    * Kept for migrating existing datasource settings to edgeURL.
