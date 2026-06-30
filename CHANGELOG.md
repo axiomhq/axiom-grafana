@@ -13,7 +13,7 @@
 ### Breaking changes
 
 - Personal tokens are no longer allowed; datasource authentication now requires API tokens.
-- `Edge URL` is now required in the plugin config and is used for all query operations. Existing v0.6.x data sources that only have `apiHost` and an API token must be edited after upgrade to set **Edge URL**. For provisioned data sources, add `jsonData.edgeURL`; legacy `jsonData.edge` values continue to be migrated automatically.
+- `Edge URL` is now required in the plugin config and is used for all query operations. To preserve compatibility for existing v0.6.x data sources that only have `apiHost` and an API token, the plugin defaults `edgeURL` to `https://us-east-1.aws.edge.axiom.co` when neither `edge` nor `edgeURL` is configured. Users with a different edge endpoint should update the datasource setting or set `jsonData.edgeURL` in provisioning. Legacy `jsonData.edge` values continue to be migrated automatically.
 
 ## 0.6.4
 
