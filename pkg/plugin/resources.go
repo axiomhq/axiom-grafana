@@ -57,8 +57,8 @@ func (d *Datasource) handleDatasetMetrics(w http.ResponseWriter, r *http.Request
 
 	dsf, err := d.api.GetMetricsForDataset(r.Context(), dataset, startTime, endTime)
 	if err != nil {
-		logger.Error("error looking up schema", "error", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		logger.Error("looking up dataset schema failed", "error", err.Error())
+		http.Error(w, "Failed to lookup dataset schema", http.StatusInternalServerError)
 		return
 	}
 
@@ -73,8 +73,8 @@ func (d *Datasource) handleDatasetTags(w http.ResponseWriter, r *http.Request) {
 
 	dsf, err := d.api.GetMetricTags(r.Context(), dataset, "", startTime, endTime)
 	if err != nil {
-		logger.Error("error looking up schema", "error", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		logger.Error("failed to fetch dataset tags", "error", err.Error())
+		http.Error(w, "Failed to fetch dataset tags", http.StatusInternalServerError)
 		return
 	}
 
@@ -90,8 +90,8 @@ func (d *Datasource) handleDatasetTagValues(w http.ResponseWriter, r *http.Reque
 
 	values, err := d.api.GetMetricTagValues(r.Context(), dataset, "", tag, startTime, endTime)
 	if err != nil {
-		logger.Error("error looking up tag values", "error", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		logger.Error("fetching tag values failed", "error", err.Error())
+		http.Error(w, "Failed to fetch tag values", http.StatusInternalServerError)
 		return
 	}
 
@@ -107,8 +107,8 @@ func (d *Datasource) handleMetricTags(w http.ResponseWriter, r *http.Request) {
 
 	dsf, err := d.api.GetMetricTags(r.Context(), dataset, metric, startTime, endTime)
 	if err != nil {
-		logger.Error("error looking up schema", "error", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		logger.Error("fetching metric tags failed", "error", err.Error())
+		http.Error(w, "Failed to fetch metric tags", http.StatusInternalServerError)
 		return
 	}
 
@@ -125,8 +125,8 @@ func (d *Datasource) handleMetricTagValues(w http.ResponseWriter, r *http.Reques
 
 	values, err := d.api.GetMetricTagValues(r.Context(), dataset, metric, tag, startTime, endTime)
 	if err != nil {
-		logger.Error("error looking up tag values", "error", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		logger.Error("fetching metric tag values failed", "error", err.Error())
+		http.Error(w, "Failed to fetch metric tag values", http.StatusInternalServerError)
 		return
 	}
 
@@ -136,8 +136,8 @@ func (d *Datasource) handleMetricTagValues(w http.ResponseWriter, r *http.Reques
 func writeJSON(w http.ResponseWriter, logger log.Logger, value any) {
 	j, err := json.Marshal(value)
 	if err != nil {
-		logger.Error("error marshaling json", "error", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		logger.Error("failed to marshal response JSON", "error", err.Error())
+		http.Error(w, "Failed to marshal JSON", http.StatusInternalServerError)
 		return
 	}
 
