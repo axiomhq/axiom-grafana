@@ -12,7 +12,7 @@
 
 ### Breaking changes
 
-- Personal tokens are no longer allowed; datasource authentication now requires API tokens.
+- Personal tokens are no longer allowed; datasource authentication now requires API tokens. Existing data sources that still use a Personal token with Org ID must be updated to use an API token before upgrading, otherwise dashboards backed by those data sources will fail authentication after upgrade.
 - `Edge URL` is now required in the plugin config and is used for all query operations. To preserve compatibility for existing v0.6.x data sources that only have `apiHost` and an API token, the plugin defaults `edgeURL` to `https://us-east-1.aws.edge.axiom.co` when neither `edge` nor `edgeURL` is configured. Users with a different edge endpoint should update the datasource setting or set `jsonData.edgeURL` in provisioning. Legacy `jsonData.edge` values continue to be migrated automatically.
 
 ## 0.6.4

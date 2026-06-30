@@ -19,6 +19,8 @@ This plugin has the following requirements:
 
 ## Upgrading from v0.6.x to v0.7.0
 
+v0.7.0 no longer supports Personal token plus Org ID authentication. If an existing data source still uses a Personal token and Org ID, update it to use an Axiom API token before upgrading so dashboards using that data source continue to authenticate.
+
 v0.7.0 uses Edge URL for query operations. Existing v0.6.x data sources that only have an API URL and API token continue to work: when neither `edge` nor `edgeURL` is configured, the plugin defaults `edgeURL` to `https://us-east-1.aws.edge.axiom.co` at config load.
 
 No manual migration is required for data sources that should use the default edge endpoint. If your Axiom deployment uses a different edge endpoint, update the data source:
