@@ -71,5 +71,6 @@ func resolveEdgeUrl(edge string, edgeUrl string) (string, error) {
 		return fmt.Sprintf("https://%s", edge), nil
 	}
 
-	return "", fmt.Errorf("Edge URL is required. Please configure the Edge URL in the Axiom Grafana datasource settings.")
+	return "https://us-east-1.aws.edge.axiom.co", nil
+	// return "", fmt.Errorf("Edge URL is required. Please configure the Edge URL in the Axiom Grafana datasource settings.")
 }

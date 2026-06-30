@@ -4,9 +4,11 @@ datasources:
   - name: 'Axiom'
     type: 'axiomhq-axiom-datasource'
     access: proxy
-    isDefault: false
+    isDefault: true
     orgId: 1
-    version: 1
+    version: 2
     editable: true
     jsonData:
       path: '/resources'
+      apiHost: https://api.axiom.co
+      edgeURL: https://us-east-1.aws.edge.axiom.co

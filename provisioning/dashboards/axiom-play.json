@@ -105,7 +105,7 @@
       },
       "targets": [
         {
-          "query": "['hn']\n| summarize count() by bin_auto(_time)",
+          "query": "['otel-demo-logs']\n| summarize count() by bin_auto(_time)",
           "kind": "apl",
           "version": 2.0,
           "datasource": {
@@ -115,7 +115,7 @@
           "refId": "A"
         }
       ],
-      "title": "hn posts",
+      "title": "logs over time",
       "type": "timeseries"
     }
   ],
@@ -126,7 +126,7 @@
     "list": []
   },
   "time": {
-    "from": "now-6h",
+    "from": "now-1h",
     "to": "now"
   },
   "timepicker": {},
