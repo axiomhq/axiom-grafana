@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fix query-backed dashboard variables emptying after 0.7.0 by assigning a `refId` on variable queries.
+
 ## 0.7.0
 
 - Add support for MPL queries in panels and variables, including the MPL editor, metric selectors, tag lookup resources, and chart-width forwarding.
