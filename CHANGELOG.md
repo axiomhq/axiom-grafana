@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.1
 
 - Fix query-backed dashboard variables emptying after 0.7.0 by assigning a `refId` on variable queries.
 
