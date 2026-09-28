@@ -12,7 +12,7 @@ type aplWideFrameBuilder struct{}
 
 func (aplWideFrameBuilder) Build(frame *data.Frame) (*data.Frame, error) {
 	wideFrame, err := data.LongToWide(frame, &data.FillMissing{
-		Mode: data.FillModePrevious,
+		Mode: data.FillModeNull,
 	})
 	if err != nil {
 		return nil, err

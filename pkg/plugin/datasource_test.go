@@ -1324,19 +1324,27 @@ func TestBuildFrameNormalizesTraceLogs(t *testing.T) {
 	require.JSONEq(t, `[{"fields":[{"key":"exception.message","value":"boom"}],"name":"exception","timestamp":1781144440000}]`, string(*logs))
 }
 
-func TestAPLWideFrameBuilderFillsMissingWithPreviousValue(t *testing.T) {
+func TestAPLWideFrameBuilderLeavesMissingValuesNull(t *testing.T) {
 	t1 := time.Date(2026, 6, 11, 13, 45, 0, 0, time.UTC)
 	t2 := time.Date(2026, 6, 11, 13, 50, 0, 0, time.UTC)
 	t3 := time.Date(2026, 6, 11, 13, 55, 0, 0, time.UTC)
-	v1 := float64(100)
-	v2 := float64(200)
-	v3 := float64(110)
+	a1 := float64(100)
+	b1 := float64(500)
+	a2 := float64(110)
+	a3 := float64(120)
+	b3 := float64(8)
 
 	longFrame := data.NewFrame(
 		"response",
-		data.NewField("_time", nil, []time.Time{t1, t2, t3}),
-		data.NewField("Lambda Name", nil, []*string{stringPtr("a"), stringPtr("b"), stringPtr("a")}),
-		data.NewField("Duration", nil, []*float64{&v1, &v2, &v3}),
+		data.NewField("_time", nil, []time.Time{t1, t1, t2, t3, t3}),
+		data.NewField("Lambda Name", nil, []*string{
+			stringPtr("a"),
+			stringPtr("b"),
+			stringPtr("a"),
+			stringPtr("a"),
+			stringPtr("b"),
+		}),
+		data.NewField("Duration", nil, []*float64{&a1, &b1, &a2, &a3, &b3}),
 	)
 	longFrame.Fields[2].Config = &data.FieldConfig{Unit: "ms"}
 
@@ -1344,21 +1352,27 @@ func TestAPLWideFrameBuilderFillsMissingWithPreviousValue(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, wideFrame.Fields, 3)
 
-	var seriesA *data.Field
+	var seriesA, seriesB *data.Field
 	for _, field := range wideFrame.Fields {
-		if field.Labels["Lambda Name"] == "a" {
+		switch field.Labels["Lambda Name"] {
+		case "a":
 			seriesA = field
-			break
+		case "b":
+			seriesB = field
 		}
 	}
 	require.NotNil(t, seriesA)
+	require.NotNil(t, seriesB)
 	require.NotNil(t, seriesA.Config)
 	require.Equal(t, "a", seriesA.Config.DisplayNameFromDS)
 	require.Equal(t, "ms", seriesA.Config.Unit)
-
-	filledValue, ok := seriesA.At(1).(*float64)
-	require.True(t, ok)
-	require.Equal(t, float64(100), *filledValue)
+	require.NotNil(t, seriesB.Config)
+	require.Equal(t, "b", seriesB.Config.DisplayNameFromDS)
+	require.Equal(t, "ms", seriesB.Config.Unit)
+	require.Equal(t, data.FieldTypeNullableFloat64, seriesB.Type())
+	require.Equal(t, &b1, seriesB.At(0))
+	require.Nil(t, seriesB.At(1))
+	require.Equal(t, &b3, seriesB.At(2))
 }
 
 func TestMetricsFrameBuilderUsesTagValuesForSeriesName(t *testing.T) {
