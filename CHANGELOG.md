@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.2
+
+- Preserve gaps in sparse APL time series instead of filling missing bins with stale values.
+
 ## 0.7.1
 
 - Fix query-backed dashboard variables emptying after 0.7.0 by assigning a `refId` on variable queries.
