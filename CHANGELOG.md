@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fix MPL queries and tag value lookups failing when a tag has non-string values such as numbers or booleans.
+
 ## 0.7.2
 
 - Preserve gaps in sparse APL time series instead of filling missing bins with stale values.

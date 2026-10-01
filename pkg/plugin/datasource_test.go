@@ -129,6 +129,29 @@ func TestResourceHandlerFetchesEscapedMetricAutocompleteValues(t *testing.T) {
 	require.JSONEq(t, `["api"]`, string(metricTagValuesResp.Body))
 }
 
+func TestResourceHandlerStringifiesNonStringTagValues(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`[1042,"a4cf12",0.5,true,null,""]`))
+		require.NoError(t, err)
+	}))
+	defer upstream.Close()
+
+	ds := Datasource{
+		api: newTestAxiomClient(t, upstream.URL, upstream.URL),
+	}
+	handler := ds.newResourceHandler()
+
+	for _, path := range []string{
+		"/datasets/metrics/tags/host.id/values",
+		"/datasets/metrics/metrics/http.requests/tags/host.id/values",
+	} {
+		resp := callResource(t, handler, path)
+		require.Equal(t, http.StatusOK, resp.Status)
+		require.JSONEq(t, `["1042","a4cf12","0.5","true","null",""]`, string(resp.Body))
+	}
+}
+
 func TestLogsVolumeAPLUsesTimeBeforeSysTime(t *testing.T) {
 	got := logsVolumeAPL("['logs'] | where level == 'error';", time.Minute)
 
@@ -338,6 +361,54 @@ func TestMPLQueryReturnsExploreTableFrameWhenRequested(t *testing.T) {
 	require.Nil(t, tableFrame.Fields[3].At(1))
 }
 
+func TestMPLQueryAcceptsNonStringTagValues(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/query/_mpl", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{
+			"metadata":{"unit":"","warnings":[]},
+			"series":[
+				{"resolution":60,"start":1781186400,"metric":"http.requests","tags":{"host.id":1042,"le":0.5,"sampled":true,"zone":null},"data":[0.1,null]},
+				{"resolution":60,"start":1781186400,"metric":"http.requests","tags":{"host.id":1042,"le":0.5,"sampled":true,"zone":""},"data":[0.7]}
+			]
+		}`))
+		require.NoError(t, err)
+	}))
+	defer upstream.Close()
+
+	ds := Datasource{
+		api: newTestAxiomClient(t, upstream.URL, upstream.URL),
+	}
+
+	resp, err := ds.QueryData(
+		context.Background(),
+		&backend.QueryDataRequest{
+			Queries: []backend.DataQuery{
+				{
+					RefID: "A",
+					JSON:  json.RawMessage(`{"kind":"mpl","query":"fetch http.requests","includeTotalsTableFrame":true}`),
+				},
+			},
+		},
+	)
+	require.NoError(t, err)
+	queryResp := resp.Responses["A"]
+	require.NoError(t, queryResp.Error)
+	require.Len(t, queryResp.Frames, 3)
+
+	require.Equal(t, data.Labels{"host.id": "1042", "le": "0.5", "sampled": "true", "zone": "null"}, queryResp.Frames[0].Fields[1].Labels)
+	require.Equal(t, data.Labels{"host.id": "1042", "le": "0.5", "sampled": "true", "zone": ""}, queryResp.Frames[1].Fields[1].Labels)
+
+	tableFrame := queryResp.Frames[2]
+	require.Equal(t, "host.id", tableFrame.Fields[0].Name)
+	require.Equal(t, "1042", *tableFrame.Fields[0].At(0).(*string))
+	require.Equal(t, "1042", *tableFrame.Fields[0].At(1).(*string))
+	require.Equal(t, "zone", tableFrame.Fields[3].Name)
+	require.Equal(t, "null", *tableFrame.Fields[3].At(0).(*string))
+	require.Equal(t, "", *tableFrame.Fields[3].At(1).(*string))
+}
+
 func TestQueryEventsPrependsLogsVolumeFrameForPanelLogQueries(t *testing.T) {
 	start := time.Date(2026, 6, 11, 2, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 6, 11, 3, 0, 0, 0, time.UTC)
@@ -418,6 +489,88 @@ func TestQueryEventsPrependsLogsVolumeFrameForPanelLogQueries(t *testing.T) {
 	logsCustom, ok := resp.Frames[1].Meta.Custom.(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "main-trace", logsCustom["axiomTraceId"])
+}
+
+func TestAPLQueryLeavesMissingBinsNullForSparseGroups(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/query/_apl", r.URL.Path)
+		require.Equal(t, "tabular", r.URL.Query().Get("format"))
+
+		// Rows only exist for bins where a group has data: "a" is missing in
+		// the last bin and "b" in the second one.
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{
+			"format":"tabular",
+			"tables":[
+				{
+					"fields":[{"name":"_time","type":"datetime"},{"name":"name","type":"string"},{"name":"n","type":"integer"}],
+					"columns":[
+						["2026-06-11T02:00:00Z","2026-06-11T02:00:00Z","2026-06-11T02:05:00Z","2026-06-11T02:10:00Z","2026-06-11T02:10:00Z","2026-06-11T02:15:00Z"],
+						["a","b","a","a","b","b"],
+						[10,500,11,12,8,9]
+					]
+				},
+				{
+					"fields":[{"name":"name","type":"string"},{"name":"n","type":"integer"}],
+					"columns":[["a","b"],[33,517]]
+				}
+			]
+		}`))
+		require.NoError(t, err)
+	}))
+	defer upstream.Close()
+
+	ds := Datasource{
+		api: newTestAxiomClient(t, upstream.URL, upstream.URL),
+	}
+
+	resp, err := ds.QueryData(
+		context.Background(),
+		&backend.QueryDataRequest{
+			Queries: []backend.DataQuery{
+				{
+					RefID: "A",
+					JSON:  json.RawMessage(`{"kind":"apl","query":"['traces'] | summarize n = count() by bin(_time, 5m), name"}`),
+				},
+			},
+		},
+	)
+	require.NoError(t, err)
+	queryResp := resp.Responses["A"]
+	require.NoError(t, queryResp.Error)
+	require.Len(t, queryResp.Frames, 1)
+
+	frame := queryResp.Frames[0]
+	require.Equal(t, data.FrameTypeTimeSeriesWide, frame.Meta.Type)
+	require.Len(t, frame.Fields, 3)
+	require.Equal(t, 4, frame.Fields[0].Len())
+
+	seriesValues := func(name string) []*float64 {
+		for _, field := range frame.Fields[1:] {
+			if field.Labels["name"] != name {
+				continue
+			}
+			values := make([]*float64, field.Len())
+			for i := range values {
+				values[i] = field.At(i).(*float64)
+			}
+			return values
+		}
+		t.Fatalf("series %q not found", name)
+		return nil
+	}
+
+	a := seriesValues("a")
+	require.Equal(t, 10.0, *a[0])
+	require.Equal(t, 11.0, *a[1])
+	require.Equal(t, 12.0, *a[2])
+	require.Nil(t, a[3], "a has no rows in the last bin")
+
+	b := seriesValues("b")
+	require.Equal(t, 500.0, *b[0])
+	require.Nil(t, b[1], "b has no rows in the second bin")
+	require.Equal(t, 8.0, *b[2])
+	require.Equal(t, 9.0, *b[3])
 }
 
 func callResource(t *testing.T, handler backend.CallResourceHandler, path string) *backend.CallResourceResponse {
