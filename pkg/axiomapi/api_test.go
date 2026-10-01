@@ -2,9 +2,11 @@ package axiomapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -112,5 +114,43 @@ func TestValidateCredentialsReturnsTransportError(t *testing.T) {
 	}
 	if err.Error() != "invalid edge url or API token" {
 		t.Fatalf("expected validation error for transport failure, got %v", err)
+	}
+}
+
+func TestMetricsQueryResponseDecodesNonStringTagValues(t *testing.T) {
+	body := `{
+		"metadata":{"unit":"ms"},
+		"series":[
+			{"metric":"http.requests","tags":{"status_code":200,"le":0.5,"sampled":true,"zone":null,"route":"/user\u002fprofile"},"start":1781186400,"resolution":60,"data":[1.5,null]},
+			{"metric":"http.requests","tags":{},"start":1781186400,"resolution":60,"data":[]},
+			{"metric":"http.requests","start":1781186400,"resolution":60,"data":[2]}
+		]
+	}`
+
+	var res MetricsQueryResponse
+	if err := json.Unmarshal([]byte(body), &res); err != nil {
+		t.Fatalf("expected non-string tag values to decode, got error: %v", err)
+	}
+	if len(res.Series) != 3 {
+		t.Fatalf("expected 3 series, got %d", len(res.Series))
+	}
+
+	want := map[string]string{"status_code": "200", "le": "0.5", "sampled": "true", "zone": "", "route": "/user/profile"}
+	if got := map[string]string(res.Series[0].Tags); !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected tags %v, got %v", want, got)
+	}
+	if got := res.Series[1].Tags; got == nil || len(got) != 0 {
+		t.Fatalf("expected empty tags, got %v", got)
+	}
+	if got := res.Series[2].Tags; got != nil {
+		t.Fatalf("expected nil tags when the field is missing, got %v", got)
+	}
+
+	first := res.Series[0]
+	if first.Metric != "http.requests" || first.Start != 1781186400 || first.Resolution != 60 {
+		t.Fatalf("unexpected series metadata: %+v", first)
+	}
+	if len(first.Data) != 2 || first.Data[0] == nil || *first.Data[0] != 1.5 || first.Data[1] != nil {
+		t.Fatalf("unexpected series data: %v", first.Data)
 	}
 }

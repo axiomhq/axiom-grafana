@@ -108,8 +108,42 @@ type MetricsQuerySeries struct {
 	Resolution int
 	Start      int64
 	Data       []*float64
-	Tags       map[string]string
+	Tags       MetricsTags
 	Metric     string
+}
+
+// MetricsTags is the tag set of a series. The metrics API returns typed tag
+// values (string, number, bool, null, array) while Grafana labels are strings,
+// so non-string values are kept as their JSON text.
+type MetricsTags map[string]string
+
+func (t *MetricsTags) UnmarshalJSON(b []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	if raw == nil {
+		*t = nil
+		return nil
+	}
+
+	if *t == nil {
+		*t = make(MetricsTags, len(raw))
+	}
+	for key, value := range raw {
+		(*t)[key] = tagValueString(value)
+	}
+	return nil
+}
+
+// tagValueString converts a JSON tag value to its label form: strings are
+// unquoted, null becomes "", everything else keeps its JSON text.
+func tagValueString(raw json.RawMessage) string {
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	return string(bytes.TrimSpace(raw))
 }
 
 func NewClient(opts httpclient.Options, c *config.PluginConfig) (*Client, error) {
@@ -265,10 +299,15 @@ func (api *Client) GetMetricTagValues(ctx context.Context, dataset string, metri
 		return nil, err
 	}
 
-	var res []string
-	_, err = api.Do(req, &res)
+	var raw []json.RawMessage
+	_, err = api.Do(req, &raw)
 	if err != nil {
 		return nil, err
+	}
+
+	res := make([]string, 0, len(raw))
+	for _, value := range raw {
+		res = append(res, tagValueString(value))
 	}
 
 	return res, nil
