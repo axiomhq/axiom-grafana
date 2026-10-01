@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.3
 
 - Fix MPL queries and tag value lookups failing when a tag has non-string values such as numbers or booleans.
 
