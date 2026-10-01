@@ -121,7 +121,7 @@ func TestMetricsQueryResponseDecodesNonStringTagValues(t *testing.T) {
 	body := `{
 		"metadata":{"unit":"ms"},
 		"series":[
-			{"metric":"http.requests","tags":{"status_code":200,"le":0.5,"sampled":true,"zone":null,"route":"/user\u002fprofile"},"start":1781186400,"resolution":60,"data":[1.5,null]},
+			{"metric":"http.requests","tags":{"status_code":200,"le":0.5,"sampled":true,"zone":null,"empty":"","route":"/user\u002fprofile"},"start":1781186400,"resolution":60,"data":[1.5,null]},
 			{"metric":"http.requests","tags":{},"start":1781186400,"resolution":60,"data":[]},
 			{"metric":"http.requests","start":1781186400,"resolution":60,"data":[2]}
 		]
@@ -135,7 +135,7 @@ func TestMetricsQueryResponseDecodesNonStringTagValues(t *testing.T) {
 		t.Fatalf("expected 3 series, got %d", len(res.Series))
 	}
 
-	want := map[string]string{"status_code": "200", "le": "0.5", "sampled": "true", "zone": "", "route": "/user/profile"}
+	want := map[string]string{"status_code": "200", "le": "0.5", "sampled": "true", "zone": "null", "empty": "", "route": "/user/profile"}
 	if got := map[string]string(res.Series[0].Tags); !reflect.DeepEqual(got, want) {
 		t.Fatalf("expected tags %v, got %v", want, got)
 	}

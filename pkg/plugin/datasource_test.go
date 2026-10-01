@@ -132,7 +132,7 @@ func TestResourceHandlerFetchesEscapedMetricAutocompleteValues(t *testing.T) {
 func TestResourceHandlerStringifiesNonStringTagValues(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, err := w.Write([]byte(`[1042,"a4cf12",0.5,true,null]`))
+		_, err := w.Write([]byte(`[1042,"a4cf12",0.5,true,null,""]`))
 		require.NoError(t, err)
 	}))
 	defer upstream.Close()
@@ -148,7 +148,7 @@ func TestResourceHandlerStringifiesNonStringTagValues(t *testing.T) {
 	} {
 		resp := callResource(t, handler, path)
 		require.Equal(t, http.StatusOK, resp.Status)
-		require.JSONEq(t, `["1042","a4cf12","0.5","true",""]`, string(resp.Body))
+		require.JSONEq(t, `["1042","a4cf12","0.5","true","null",""]`, string(resp.Body))
 	}
 }
 
@@ -370,7 +370,7 @@ func TestMPLQueryAcceptsNonStringTagValues(t *testing.T) {
 			"metadata":{"unit":"","warnings":[]},
 			"series":[
 				{"resolution":60,"start":1781186400,"metric":"http.requests","tags":{"host.id":1042,"le":0.5,"sampled":true,"zone":null},"data":[0.1,null]},
-				{"resolution":60,"start":1781186400,"metric":"http.requests","tags":{"host.id":"a4cf12","le":"+Inf","sampled":false,"zone":"eu"},"data":[0.7]}
+				{"resolution":60,"start":1781186400,"metric":"http.requests","tags":{"host.id":1042,"le":0.5,"sampled":true,"zone":""},"data":[0.7]}
 			]
 		}`))
 		require.NoError(t, err)
@@ -397,13 +397,16 @@ func TestMPLQueryAcceptsNonStringTagValues(t *testing.T) {
 	require.NoError(t, queryResp.Error)
 	require.Len(t, queryResp.Frames, 3)
 
-	require.Equal(t, data.Labels{"host.id": "1042", "le": "0.5", "sampled": "true", "zone": ""}, queryResp.Frames[0].Fields[1].Labels)
-	require.Equal(t, data.Labels{"host.id": "a4cf12", "le": "+Inf", "sampled": "false", "zone": "eu"}, queryResp.Frames[1].Fields[1].Labels)
+	require.Equal(t, data.Labels{"host.id": "1042", "le": "0.5", "sampled": "true", "zone": "null"}, queryResp.Frames[0].Fields[1].Labels)
+	require.Equal(t, data.Labels{"host.id": "1042", "le": "0.5", "sampled": "true", "zone": ""}, queryResp.Frames[1].Fields[1].Labels)
 
 	tableFrame := queryResp.Frames[2]
 	require.Equal(t, "host.id", tableFrame.Fields[0].Name)
 	require.Equal(t, "1042", *tableFrame.Fields[0].At(0).(*string))
-	require.Equal(t, "a4cf12", *tableFrame.Fields[0].At(1).(*string))
+	require.Equal(t, "1042", *tableFrame.Fields[0].At(1).(*string))
+	require.Equal(t, "zone", tableFrame.Fields[3].Name)
+	require.Equal(t, "null", *tableFrame.Fields[3].At(0).(*string))
+	require.Equal(t, "", *tableFrame.Fields[3].At(1).(*string))
 }
 
 func TestQueryEventsPrependsLogsVolumeFrameForPanelLogQueries(t *testing.T) {

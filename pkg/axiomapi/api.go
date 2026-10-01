@@ -137,11 +137,11 @@ func (t *MetricsTags) UnmarshalJSON(b []byte) error {
 }
 
 // tagValueString converts a JSON tag value to its label form: strings are
-// unquoted, null becomes "", everything else keeps its JSON text.
+// unquoted, while every other value keeps its JSON text.
 func tagValueString(raw json.RawMessage) string {
-	var s string
-	if err := json.Unmarshal(raw, &s); err == nil {
-		return s
+	var s *string
+	if err := json.Unmarshal(raw, &s); err == nil && s != nil {
+		return *s
 	}
 	return string(bytes.TrimSpace(raw))
 }
