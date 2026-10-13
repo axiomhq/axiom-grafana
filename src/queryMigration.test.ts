@@ -47,3 +47,13 @@ describe('migrateAxiomQuery', () => {
     expect(shouldMigrateAxiomQuery({ refId: 'A', version: '2.0', kind: 'mpl', query: 'fetch cpu' })).toBe(false);
   });
 });
+
+it('preserves trace lookup parameters during migration', () => {
+  expect(migrateAxiomQuery({ refId: 'A', kind: 'trace', query: '', traceId: 'abc', dataset: 'spans' })).toMatchObject({
+    kind: 'trace',
+    traceId: 'abc',
+    dataset: 'spans',
+    query: '',
+    totals: false,
+  });
+});

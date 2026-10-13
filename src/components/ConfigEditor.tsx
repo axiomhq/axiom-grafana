@@ -106,6 +106,22 @@ export function ConfigEditor(props: Props) {
           onChange={onAccessTokenChange}
         />
       </InlineField>
+      <InlineField label="Trace dataset" tooltip="Dataset containing spans, used by trace lookup and log links.">
+        <Input
+          value={jsonData.traceDataset || ''}
+          onChange={(e) =>
+            onOptionsChange({ ...options, jsonData: { ...jsonData, traceDataset: e.currentTarget.value } })
+          }
+        />
+      </InlineField>
+      <InlineField label="Trace ID field" tooltip="Span and log field containing the trace ID.">
+        <Input
+          value={jsonData.traceIdField || 'trace_id'}
+          onChange={(e) =>
+            onOptionsChange({ ...options, jsonData: { ...jsonData, traceIdField: e.currentTarget.value } })
+          }
+        />
+      </InlineField>
       <br />
       {/* If personal token is used, show an error message */}
       {isPersonalToken && (

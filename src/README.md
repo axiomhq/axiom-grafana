@@ -77,3 +77,9 @@ grafana-cli plugins install axiomhq-axiom-datasource
 ```
 GF_INSTALL_PLUGINS="axiomhq-axiom-datasource"
 ```
+
+## Traces
+
+Configure **Trace dataset** and **Trace ID field** (default: `trace_id`) in the data source settings. In Explore, choose **Traces**, enter the trace ID, and run the query. The dataset and ID field can be overridden per query. Logs containing trace IDs get a **View trace** link to the configured span dataset.
+
+Trace lookup uses Explore's selected time range. Expand it if spans are missing; server result limits can also return partial traces. Span fields must use recognized aliases, or be normalized through an APL query. Numeric `duration` is nanoseconds; `durationMs` is milliseconds. Invalid span IDs or timing are skipped with a warning.

@@ -5,6 +5,7 @@
   "id": "axiomhq-axiom-datasource",
   "metrics": true,
   "logs": true,
+  "tracing": true,
   "backend": true,
   "alerting": true,
   "executable": "axiom-datasource-plugin",

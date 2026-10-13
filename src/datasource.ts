@@ -12,7 +12,8 @@ import { AxiomQuery, AxiomDataSourceOptions } from './types';
 import { migrateAxiomQuery } from './queryMigration';
 import { AxiomVariableSupport } from './variables';
 import { getMetricFindValues, textValuesToMetricFindValues } from './variableValues';
-import { lastValueFrom } from 'rxjs';
+import { lastValueFrom, map } from 'rxjs';
+import { addTraceLinks } from './traceLinks';
 
 const SUPPLEMENTARY_QUERY_TYPE_LOGS_VOLUME = 'LogsVolume';
 const LOGS_VOLUME_QUERY_TYPE = 'logs-volume';
@@ -21,10 +22,16 @@ const PANEL_APPS = new Set<CoreApp | string>([CoreApp.Dashboard, CoreApp.PanelEd
 
 export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourceOptions> {
   url?: string;
+  traceDataset: string;
+  traceIdField: string;
+  private instanceSettings: DataSourceInstanceSettings<AxiomDataSourceOptions>;
 
   constructor(instanceSettings: DataSourceInstanceSettings<AxiomDataSourceOptions>) {
     super(instanceSettings);
     this.url = instanceSettings.url;
+    this.instanceSettings = instanceSettings;
+    this.traceDataset = instanceSettings.jsonData.traceDataset || '';
+    this.traceIdField = instanceSettings.jsonData.traceIdField || 'trace_id';
     this.variables = new AxiomVariableSupport(this);
   }
 
@@ -37,6 +44,9 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
     return {
       ...migratedQuery,
       query: interpolatedQuery,
+      dataset: templateSrv.replace(migratedQuery.dataset || this.traceDataset, scopedVars),
+      traceId: templateSrv.replace(migratedQuery.traceId || '', scopedVars),
+      traceIdField: migratedQuery.traceIdField || this.traceIdField,
     };
   }
 
@@ -47,18 +57,29 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
     // logs-volume frame while preserving the raw log lines as a secondary frame.
     const includeLogsVolumeFrame = request.app ? PANEL_APPS.has(request.app) : false;
 
-    return super.query({
-      ...request,
-      targets: request.targets.map((query) => {
-        const migratedQuery = migrateAxiomQuery(query);
+    return super
+      .query({
+        ...request,
+        targets: request.targets.map((query) => {
+          const migratedQuery = migrateAxiomQuery(query);
 
-        return {
-          ...migratedQuery,
-          includeTotalsTableFrame: includeTotalsTableFrame && !migratedQuery.totals,
-          includeLogsVolumeFrame: includeLogsVolumeFrame && migratedQuery.kind !== 'mpl' && !migratedQuery.totals,
-        };
-      }),
-    });
+          return {
+            ...migratedQuery,
+            dataset: migratedQuery.dataset || this.traceDataset,
+            traceIdField: migratedQuery.traceIdField || this.traceIdField,
+            includeTotalsTableFrame: includeTotalsTableFrame && !migratedQuery.totals,
+            includeLogsVolumeFrame: includeLogsVolumeFrame && migratedQuery.kind !== 'mpl' && !migratedQuery.totals,
+          };
+        }),
+      })
+      .pipe(
+        map((response) => ({
+          ...response,
+          data: response.data.map((frame) =>
+            addTraceLinks(frame, this.instanceSettings, this.traceDataset, this.traceIdField)
+          ),
+        }))
+      );
   }
 
   private timeRangeParams(): Record<string, string> {
@@ -114,7 +135,7 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
   }
 
   getQueryDisplayText(query: AxiomQuery) {
-    return query.query;
+    return query.kind === 'trace' ? `Trace ${query.traceId || ''}` : query.query;
   }
 
   getSupportedSupplementaryQueryTypes() {
@@ -122,7 +143,12 @@ export class DataSource extends DataSourceWithBackend<AxiomQuery, AxiomDataSourc
   }
 
   getSupplementaryQuery(options: { type: string }, originalQuery: AxiomQuery): AxiomQuery | undefined {
-    if (options.type !== SUPPLEMENTARY_QUERY_TYPE_LOGS_VOLUME || originalQuery.hide || originalQuery.kind === 'mpl') {
+    if (
+      options.type !== SUPPLEMENTARY_QUERY_TYPE_LOGS_VOLUME ||
+      originalQuery.hide ||
+      originalQuery.kind === 'mpl' ||
+      originalQuery.kind === 'trace'
+    ) {
       return undefined;
     }
 
