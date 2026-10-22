@@ -1,5 +1,5 @@
 import React, { FormEvent, useEffect } from 'react';
-import { FieldSet, Field, InlineField, InlineFieldRow, InlineSwitch, FilterPill, Stack } from '@grafana/ui';
+import { FieldSet, Field, InlineField, InlineFieldRow, InlineSwitch, FilterPill, Stack, Input } from '@grafana/ui';
 import { CoreApp, QueryEditorProps } from '@grafana/data';
 import type { DataSource } from '../datasource';
 import { AxiomDataSourceOptions, AxiomQuery } from '../types';
@@ -58,10 +58,47 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource, app }: Pr
           onClick={() => onChange({ ...migratedQuery, kind: 'mpl' })}
           selected={migratedQuery.kind === 'mpl'}
         />
+        <FilterPill
+          label="Traces"
+          selected={migratedQuery.kind === 'trace'}
+          onClick={() => onChange({ ...migratedQuery, kind: 'trace', totals: false })}
+        />
       </Stack>
       <FieldSet>
         <Field>
-          {migratedQuery.kind === 'mpl' ? (
+          {migratedQuery.kind === 'trace' ? (
+            <Stack direction="column">
+              <InlineField label="Trace dataset">
+                <Input
+                  aria-label="Trace dataset"
+                  value={migratedQuery.dataset || datasource.traceDataset}
+                  onChange={(e) => onChange({ ...migratedQuery, dataset: e.currentTarget.value })}
+                />
+              </InlineField>
+              <InlineField label="Trace ID field">
+                <Input
+                  aria-label="Trace ID field"
+                  value={migratedQuery.traceIdField || datasource.traceIdField}
+                  onChange={(e) => onChange({ ...migratedQuery, traceIdField: e.currentTarget.value })}
+                />
+              </InlineField>
+              <InlineField
+                label="Trace ID"
+                tooltip="Spans are fetched within the selected time range. Expand it if spans are missing."
+              >
+                <Input
+                  aria-label="Trace ID"
+                  value={migratedQuery.traceId || ''}
+                  onChange={(e) => onChange({ ...migratedQuery, traceId: e.currentTarget.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      onRunQuery();
+                    }
+                  }}
+                />
+              </InlineField>
+            </Stack>
+          ) : migratedQuery.kind === 'mpl' ? (
             <MplQueryCodeMirror
               value={queryText}
               onBlur={runMplQuery}
@@ -84,7 +121,7 @@ export function QueryEditor({ query, onChange, onRunQuery, datasource, app }: Pr
             />
           )}
         </Field>
-        {migratedQuery.kind !== 'mpl' && (
+        {migratedQuery.kind === 'apl' && (
           <InlineFieldRow>
             <InlineField label="Query type" grow>
               <InlineSwitch

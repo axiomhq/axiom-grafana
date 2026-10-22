@@ -3,13 +3,15 @@ import { DataQuery, DataSourceJsonData } from '@grafana/schema';
 export const QUERY_MODEL_VERSION = '2.0';
 
 export type QueryModelVersion = typeof QUERY_MODEL_VERSION;
-export type AxiomQueryKind = 'apl' | 'mpl';
+export type AxiomQueryKind = 'apl' | 'mpl' | 'trace';
 
 export interface AxiomQuery extends DataQuery {
   version?: QueryModelVersion;
   kind?: AxiomQueryKind | null;
   query: string;
   apl?: string;
+  traceId?: string;
+  traceIdField?: string;
   totals: boolean;
   dataset?: string;
   metric?: string;
@@ -33,6 +35,8 @@ export const DEFAULT_QUERY: Partial<AxiomQuery> = {
  */
 export interface AxiomDataSourceOptions extends DataSourceJsonData {
   apiHost: string;
+  traceDataset?: string;
+  traceIdField?: string;
   /**
    * Legacy regional edge domain for ingest and query operations.
    * Kept for migrating existing datasource settings to edgeURL.

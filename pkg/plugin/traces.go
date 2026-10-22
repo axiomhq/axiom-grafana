@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -10,7 +11,6 @@ import (
 	"time"
 
 	axiQuery "github.com/axiomhq/axiom-go/axiom/query"
-	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 )
 
@@ -67,6 +67,25 @@ var traceFieldAliases = map[string]traceFieldAlias{
 	"durationNs":  {canonicalName: "duration"},
 	"duration_ns": {canonicalName: "duration"},
 
+	"serviceNamespace":              {canonicalName: "serviceNamespace"},
+	"service.namespace":             {canonicalName: "serviceNamespace"},
+	"kind":                          {canonicalName: "kind"},
+	"span.kind":                     {canonicalName: "kind"},
+	"statusCode":                    {canonicalName: "statusCode"},
+	"status.code":                   {canonicalName: "statusCode"},
+	"statusMessage":                 {canonicalName: "statusMessage"},
+	"status.message":                {canonicalName: "statusMessage"},
+	"instrumentationLibraryName":    {canonicalName: "instrumentationLibraryName"},
+	"scope.name":                    {canonicalName: "instrumentationLibraryName"},
+	"instrumentationLibraryVersion": {canonicalName: "instrumentationLibraryVersion"},
+	"scope.version":                 {canonicalName: "instrumentationLibraryVersion"},
+	"traceState":                    {canonicalName: "traceState"},
+	"trace_state":                   {canonicalName: "traceState"},
+	"references":                    {canonicalName: "references"},
+	"links":                         {canonicalName: "references"},
+	"warnings":                      {canonicalName: "warnings"},
+	"stackTraces":                   {canonicalName: "stackTraces"},
+
 	"serviceTags":  {canonicalName: "serviceTags"},
 	"service_tags": {canonicalName: "serviceTags"},
 	"tags":         {canonicalName: "tags"},
@@ -117,7 +136,6 @@ func fieldsMatchTrace(ctx context.Context, fields []axiQuery.Field) bool {
 }
 
 func buildTraceFrame(ctx context.Context, result *axiQuery.Table) (*data.Frame, error) {
-	logger := log.DefaultLogger.FromContext(ctx)
 	columns := traceColumns(result.Fields)
 	rowCount := traceRowCount(result.Columns)
 
@@ -132,7 +150,48 @@ func buildTraceFrame(ctx context.Context, result *axiQuery.Table) (*data.Frame, 
 	logsField := data.NewField("logs", nil, []*json.RawMessage{})
 	tagsField := data.NewField("tags", nil, []*json.RawMessage{})
 
+	extraFields := []*data.Field{}
+	for _, name := range []string{"serviceNamespace", "kind", "statusCode", "statusMessage", "instrumentationLibraryName", "instrumentationLibraryVersion", "traceState", "references", "warnings", "stackTraces"} {
+		if _, ok := columns[name]; !ok {
+			continue
+		}
+		var values any = []*string{}
+		if name == "statusCode" {
+			values = []*float64{}
+		}
+		if name == "references" || name == "warnings" || name == "stackTraces" {
+			values = []*json.RawMessage{}
+		}
+		extraFields = append(extraFields, data.NewField(name, nil, values))
+	}
+	skipped := 0
 	for row := 0; row < rowCount; row++ {
+		start, validStart := traceStartTimeMillis(traceColumnValue(result, columns, "startTime", row), columns["startTime"].name)
+		durationValue, validDuration := traceDurationMillis(traceColumnValue(result, columns, "duration", row), columns["duration"].name)
+		if traceValueString(traceColumnValue(result, columns, "traceID", row)) == "" || traceValueString(traceColumnValue(result, columns, "spanID", row)) == "" || !validStart || !validDuration || math.IsNaN(start) || math.IsInf(start, 0) || math.IsNaN(durationValue) || math.IsInf(durationValue, 0) || durationValue < 0 {
+			skipped++
+			continue
+		}
+		for _, field := range extraFields {
+			value := traceColumnValue(result, columns, field.Name, row)
+			switch field.Name {
+			case "statusCode":
+				code := traceStatusCode(value)
+				field.Append(&code)
+			case "references":
+				field.Append(traceJSONPtr(traceReferences(value)))
+			case "warnings", "stackTraces":
+				if text, ok := value.(string); ok {
+					_ = json.Unmarshal([]byte(text), &value)
+				}
+				if value == nil {
+					value = []string{}
+				}
+				field.Append(traceJSONPtr(value))
+			default:
+				field.Append(nullableStringPtr(traceValueString(value)))
+			}
+		}
 		traceIDField.Append(stringPtr(traceValueString(traceColumnValue(result, columns, "traceID", row))))
 		spanIDField.Append(stringPtr(traceValueString(traceColumnValue(result, columns, "spanID", row))))
 		parentSpanIDField.Append(nullableStringPtr(traceValueString(traceColumnValue(result, columns, "parentSpanID", row))))
@@ -142,25 +201,14 @@ func buildTraceFrame(ctx context.Context, result *axiQuery.Table) (*data.Frame, 
 		serviceNameField.Append(stringPtr(serviceName))
 		serviceTagsField.Append(traceJSONPtr(traceServiceTagsValue(result, columns, serviceName, row)))
 
-		startTime, ok := traceStartTimeMillis(traceColumnValue(result, columns, "startTime", row), columns["startTime"].name)
-		if !ok {
-			logger.Warn("failed to parse trace start time", "row", row, "value", traceColumnValue(result, columns, "startTime", row))
-			startTime = 0
-		}
-		startTimeField.Append(&startTime)
+		startTimeField.Append(&start)
+		durationField.Append(&durationValue)
 
-		duration, ok := traceDurationMillis(traceColumnValue(result, columns, "duration", row), columns["duration"].name)
-		if !ok {
-			logger.Warn("failed to parse trace duration", "row", row, "value", traceColumnValue(result, columns, "duration", row))
-			duration = 0
-		}
-		durationField.Append(&duration)
-
-		logsField.Append(traceJSONPtr(traceLogsValue(traceColumnValue(result, columns, "logs", row), startTime)))
+		logsField.Append(traceJSONPtr(traceLogsValue(traceColumnValue(result, columns, "logs", row), start)))
 		tagsField.Append(traceJSONPtr(traceTagsValue(result, columns, row)))
 	}
 
-	return data.NewFrame(
+	frame := data.NewFrame(
 		"Trace",
 		traceIDField,
 		spanIDField,
@@ -174,7 +222,56 @@ func buildTraceFrame(ctx context.Context, result *axiQuery.Table) (*data.Frame, 
 		tagsField,
 	).SetMeta(&data.FrameMeta{
 		PreferredVisualization: data.VisTypeTrace,
-	}), nil
+	})
+	frame.Fields = append(frame.Fields, extraFields...)
+	if skipped > 0 {
+		frame.Meta.Notices = append(frame.Meta.Notices, data.Notice{Severity: data.NoticeSeverityWarning, Text: fmt.Sprintf("Skipped %d spans with missing IDs or invalid timing", skipped)})
+	}
+	return frame, nil
+}
+
+func traceStatusCode(value any) float64 {
+	switch strings.ToUpper(traceValueString(value)) {
+	case "ERROR", "STATUS_CODE_ERROR", "2":
+		return 2
+	case "OK", "STATUS_CODE_OK", "1":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func traceReferences(value any) []map[string]any {
+	if text, ok := value.(string); ok {
+		_ = json.Unmarshal([]byte(text), &value)
+	}
+	refs := []map[string]any{}
+	entries, _ := value.([]any)
+	for _, entry := range entries {
+		item, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		traceID, spanID := item["traceID"], item["spanID"]
+		if traceID == nil {
+			traceID = item["trace_id"]
+		}
+		if spanID == nil {
+			spanID = item["span_id"]
+		}
+		if traceValueString(traceID) == "" || traceValueString(spanID) == "" {
+			continue
+		}
+		ref := map[string]any{"traceID": traceValueString(traceID), "spanID": traceValueString(spanID)}
+		if attributes := item["attributes"]; attributes != nil {
+			ref["tags"] = traceKeyValuePairs(attributes, "attributes")
+		}
+		if tags := item["tags"]; tags != nil {
+			ref["tags"] = traceKeyValuePairs(tags, "tags")
+		}
+		refs = append(refs, ref)
+	}
+	return refs
 }
 
 func traceColumns(fields []axiQuery.Field) map[string]traceColumn {
@@ -242,6 +339,9 @@ func traceServiceTagsValue(result *axiQuery.Table, columns map[string]traceColum
 
 func traceTagsValue(result *axiQuery.Table, columns map[string]traceColumn, row int) any {
 	tags := make([]map[string]any, 0)
+	if traceStatusCode(traceColumnValue(result, columns, "statusCode", row)) == 2 {
+		tags = append(tags, map[string]any{"key": "error", "value": true})
+	}
 	for fieldIndex, field := range result.Fields {
 		alias, isTraceField := traceFieldAliases[field.Name]
 		if isTraceField && alias.canonicalName != "tags" {

@@ -37,6 +37,9 @@ type Datasource struct {
 }
 
 type queryModel struct {
+	Dataset                 string  `json:"dataset"`
+	TraceID                 string  `json:"traceId"`
+	TraceIDField            string  `json:"traceIdField"`
 	Version                 *string `json:"version"`
 	APL                     *string `json:"apl"`
 	Kind                    *string `json:"kind"`
@@ -133,6 +136,16 @@ func (d *Datasource) execQuery(ctx context.Context, query concurrent.Query) (res
 		qm.Query = qm.APL
 	}
 
+	if qm.Kind != nil && *qm.Kind == "trace" {
+		apl, err := traceLookupAPL(qm.Dataset, qm.TraceIDField, qm.TraceID)
+		if err != nil {
+			return backend.ErrDataResponse(backend.StatusBadRequest, err.Error())
+		}
+		qm.Query = &apl
+		qm.Totals = false
+		qm.IncludeTotalsTableFrame = false
+		qm.IncludeLogsVolumeFrame = false
+	}
 	if isEmptyQuery(qm.Query) {
 		return backend.DataResponse{}
 	}
@@ -203,9 +216,25 @@ func (d *Datasource) queryEvents(ctx context.Context, q *queryModel, query backe
 		frameOptions.Query = *q.Query
 	}
 
-	frames, err := newAPLResponseFrameBuilder(q.Totals, q.IncludeTotalsTableFrame).BuildFrames(ctx, result, frameOptions)
-	if err != nil {
-		return nil, err
+	var frames []*data.Frame
+	if q.Kind != nil && *q.Kind == "trace" {
+		if len(result.Tables) == 0 {
+			return &backend.DataResponse{}, nil
+		}
+		table := &result.Tables[0]
+		if traceRowCount(table.Columns) > 0 && !fieldsMatchTrace(ctx, table.Fields) {
+			return nil, fmt.Errorf("trace dataset must contain span IDs, operation, service, start time and duration; use APL aliases to normalize custom schemas")
+		}
+		frame, err := aplTraceFrameBuilder{}.Build(ctx, table, frameOptions)
+		if err != nil {
+			return nil, err
+		}
+		frames = []*data.Frame{frame}
+	} else {
+		frames, err = newAPLResponseFrameBuilder(q.Totals, q.IncludeTotalsTableFrame).BuildFrames(ctx, result, frameOptions)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var response backend.DataResponse

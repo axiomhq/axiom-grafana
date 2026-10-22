@@ -68,6 +68,23 @@ The Axiom Datasource Plugin provides a custom query editor to build and visualiz
 2. Select the Axiom data source.
 3. Use the query editor to choose the desired metrics, dimensions, and filters.
 
+### Traces
+
+In the data source settings, set **Trace dataset** to the dataset containing spans and **Trace ID field** to its trace identifier column (defaults to `trace_id`). These settings also enable **View trace** links on log results containing trace IDs. Logs and spans can live in different datasets; the link always queries the configured trace dataset.
+
+In Explore, select **Traces**, enter a trace ID, and run the query. You can override the dataset and trace ID field for each query. Lookup filters the selected trace within Explore's time range. Expand that range if a trace started earlier or has missing spans. Axiom partial-result notices remain visible; lookup does not guarantee completeness beyond the selected range or server result limits.
+
+Span datasets must contain the recognized operation, service, span ID, start time, and duration columns. APL queries still automatically render traces when these columns are present; use APL aliases for custom schemas. For example:
+
+```apl
+['spans']
+| where trace_id == 'your-trace-id'
+| project traceID = trace_id, spanID = span_id, parentSpanID = parent_span_id,
+    operationName = name, serviceName = ['service.name'], startTime = _time, duration
+```
+
+Numeric `duration` values are interpreted as nanoseconds; use `durationMs` for milliseconds. Invalid IDs or timing cause spans to be skipped with a visible warning. Span status errors, events, attributes, and links are mapped into Grafana's trace fields. Trace-to-logs/metrics correlations and service node graphs are not configured by this plugin.
+
 ### Metric series labels
 
 For MPL metric queries, Grafana legends use the metric name plus the tag set by default. To make legends easier to scan, the plugin uses tag values as the leading label when tags are present, for example `200 | POST | /checkout {status=200, method=POST, route=/checkout}`.
