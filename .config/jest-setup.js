@@ -6,6 +6,7 @@
  */
 
 import '@testing-library/jest-dom';
+import 'jest-canvas-mock';
 import { TextEncoder, TextDecoder } from 'util';
 
 Object.assign(global, { TextDecoder, TextEncoder });
@@ -24,5 +25,3 @@ Object.defineProperty(global, 'matchMedia', {
     dispatchEvent: jest.fn(),
   }),
 });
-
-HTMLCanvasElement.prototype.getContext = () => {};
