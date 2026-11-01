@@ -54,7 +54,6 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.0",
     "fork-ts-checker-webpack-plugin": "^8.0.0",
-    "glob": "^10.2.7",
     "identity-obj-proxy": "3.0.0",
     "imports-loader": "^5.0.0",
     "intersection-observer": "^0.12.2",
